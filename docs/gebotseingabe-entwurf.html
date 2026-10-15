@@ -1,0 +1,879 @@
+<title>Bietrunde Gebotseingabe</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400..700&display=swap">
+<style>
+/* Layout: the live app's own look. Dark blue band with the totals, the own bid in a white card
+   that overlaps it, and the keypad as a full-screen dark blue sheet. One light theme, like the app. */
+:root {
+  --werkblau: #1F3B52;
+  --werkblau-hover: #2A4C68;
+  --glow: #365F82;
+  --gelb: #F5DC51;
+  --gelb-hover: #F0D33D;
+  --gelb-70: rgb(245 220 81 / 0.7);
+  --gelb-hell: #FFF8D2;
+  --gelb-rand: rgb(245 220 81 / 0.6);
+  --blau: #406B8F;
+  --blau-ring: rgb(64 107 143 / 0.15);
+  --blau-rand: rgb(64 107 143 / 0.18);
+  --blau-hell: #EEF3F7;
+  --blau-hell-hover: #E1EAF1;
+  --papier: #F5F7F9;
+  --tinte: #14232F;
+  --tinte-70: rgb(20 35 47 / 0.7);
+  --grau: rgb(20 35 47 / 0.62);
+  --tinte-55: rgb(20 35 47 / 0.55);
+  --tinte-15: rgb(20 35 47 / 0.15);
+  --tinte-12: rgb(20 35 47 / 0.12);
+  --tinte-08: rgb(20 35 47 / 0.08);
+  --weiss: #FFFFFF;
+  --weiss-75: rgb(255 255 255 / 0.75);
+  --weiss-60: rgb(255 255 255 / 0.6);
+  --vorschau: #8F9DA8;
+  --weiss-50: rgb(255 255 255 / 0.5);
+  --weiss-25: rgb(255 255 255 / 0.25);
+  --weiss-15: rgb(255 255 255 / 0.15);
+  --weiss-10: rgb(255 255 255 / 0.1);
+  --ziegel: #A63A28;
+  --gruen: #2F8F5B;
+  --gruen-dunkel: #23774A;
+  --shadow-banner: 0 10px 28px -10px rgb(20 35 47 / 0.5);
+  --shadow-card: 0 1px 2px rgb(20 35 47 / 0.06), 0 8px 24px -12px rgb(20 35 47 / 0.18);
+  --font-display: "Bricolage Grotesque", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+  font-size: 106.25%;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+/* Top safe area shows the band colour, bottom safe area the page colour. */
+html { background: linear-gradient(to bottom, var(--werkblau) 0 50%, var(--papier) 50% 100%); }
+
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--tinte);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1, h2 { margin: 0; font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; }
+svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+:focus-visible { outline: 3px solid var(--blau); outline-offset: 2px; }
+.band :focus-visible, .sheet :focus-visible { outline-color: var(--gelb); }
+
+.wrap {
+  width: 100%;
+  max-width: 36rem;
+  margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* Header band */
+.band { position: relative; overflow: hidden; background: var(--werkblau); color: var(--weiss); }
+.band::before {
+  content: "";
+  position: absolute;
+  inset: -40% -35% -50% 15%;
+  background: radial-gradient(closest-side, var(--glow), transparent);
+  pointer-events: none;
+}
+.band-inner { position: relative; padding-block: 0 3.9rem; }
+.band-inner.flat { padding-block: 0 2rem; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 4.6rem; }
+.wordmark { font-family: var(--font-display); font-weight: 800; font-size: 1.45rem; line-height: 1; letter-spacing: -0.02em; color: var(--gelb); }
+.wordmark span { display: block; margin-top: 0.25rem; font-family: var(--font-body); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; color: var(--weiss-75); }
+.who { display: flex; align-items: center; gap: 0.9rem; min-width: 0; }
+.who-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.link-btn { appearance: none; border: 0; background: transparent; color: var(--weiss-60); font-weight: 500; font-size: 0.9rem; min-height: 2.75rem; padding: 0; margin: 0; white-space: nowrap; }
+
+.stats { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1rem; padding-top: 1.1rem; }
+.stat-right { margin-left: auto; text-align: right; }
+.big { font-family: var(--font-display); font-weight: 700; line-height: 1; letter-spacing: -0.025em; font-size: clamp(2.1rem, 11vw, 3rem); color: var(--gelb); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.big.dim { color: var(--gelb-70); }
+.big .u { font-size: 0.62em; margin-left: 0.2em; }
+.sub { margin-top: 0.55rem; color: var(--weiss-75); }
+.track { margin-top: 1.6rem; height: 0.75rem; border-radius: 999px; background: var(--weiss-15); overflow: hidden; }
+.fill { height: 100%; width: 0; border-radius: inherit; background: var(--gelb); transition: width 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.meta { display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.8rem; font-size: 0.875rem; color: var(--weiss-75); }
+
+/* Member page */
+.member-main { position: relative; margin-top: -2rem; padding-block: 0 1rem; display: grid; gap: 0.75rem; }
+.card { background: var(--weiss); border-radius: 1.25rem; box-shadow: var(--shadow-card); padding: 1rem; }
+.card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; }
+.card-head h1 { font-size: 1.5rem; }
+
+.seg { display: inline-flex; padding: 0.2rem; border-radius: 999px; background: var(--papier); box-shadow: inset 0 0 0 1px var(--tinte-08); }
+.seg button { appearance: none; border: 0; background: transparent; font-size: 0.875rem; font-weight: 600; color: var(--tinte-70); min-height: 2.25rem; padding: 0 0.85rem; border-radius: 999px; transition: background-color 0.15s, color 0.15s; }
+.seg button[aria-pressed="true"] { background: var(--werkblau); color: var(--weiss); }
+/* Netto/Brutto: a plain text button that shows the current mode and toggles it. */
+.mode-toggle { appearance: none; border: 0; background: transparent; min-height: 2.75rem; padding: 0; margin: 0; color: var(--grau); font-weight: 500; font-size: 0.85rem; }
+
+.own { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; margin-top: 0.75rem; }
+.own-right { margin-left: auto; text-align: right; }
+.own-value { font-family: var(--font-display); font-weight: 700; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: clamp(1.9rem, 10.5vw, 3.25rem); }
+.own-value .u { font-size: 0.58em; margin-left: 0.15em; color: var(--tinte-55); }
+.own-value.hours { color: var(--werkblau); }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem; }
+.big-btn {
+  appearance: none; border: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem;
+  min-height: 3.75rem; padding: 0.6rem 0.5rem; border-radius: 1rem;
+  font-family: var(--font-display); font-weight: 700; font-size: clamp(1rem, 4.4vw, 1.2rem); line-height: 1.1; letter-spacing: -0.01em;
+  text-align: center; hyphens: auto; overflow-wrap: anywhere;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: transform 0.15s, background-color 0.15s;
+}
+.big-btn:active { transform: scale(0.97); }
+.btn-geld, .btn-zeit { background: var(--blau-hell); color: var(--werkblau); box-shadow: inset 0 0 0 1px var(--blau-rand); }
+.btn-geld:hover, .btn-zeit:hover { background: var(--blau-hell-hover); }
+
+.pin-note { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.5rem 0.5rem 1rem; border-radius: 1rem; background: var(--gelb-hell); box-shadow: inset 0 0 0 1px var(--gelb-rand); font-size: 0.9rem; }
+.chip { appearance: none; border: 0; background: var(--weiss); color: var(--tinte); font-size: 0.875rem; font-weight: 600; min-height: 2.5rem; padding: 0 0.9rem; border-radius: 999px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--tinte-08); }
+
+/* Desktop editor inside the card */
+.desk { margin-top: 1.25rem; display: grid; gap: 0.6rem; }
+.desk label { font-weight: 600; font-size: 0.95rem; }
+.desk-field { position: relative; }
+.desk-field input {
+  width: 100%; padding: 0.55rem 3.25rem 0.55rem 1rem; border-radius: 1rem;
+  border: 2px solid var(--tinte-15); background: var(--weiss); color: var(--tinte);
+  font-family: var(--font-display); font-weight: 700; font-size: 2.4rem; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+}
+.desk-field input::placeholder { color: var(--tinte-15); }
+.desk-field input:focus { outline: none; border-color: var(--blau); box-shadow: 0 0 0 4px var(--blau-ring); }
+.desk-field .suffix { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; color: var(--tinte-55); pointer-events: none; }
+.desk-row { display: flex; gap: 0.5rem; }
+.hint { font-size: 0.9rem; color: var(--tinte-70); min-height: 1.35em; }
+.hint.warn { color: var(--ziegel); font-weight: 600; }
+
+.btn { appearance: none; border: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0 1.1rem; border-radius: 0.9rem; font-weight: 600; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--werkblau); color: var(--weiss); }
+.btn-primary:hover:not(:disabled) { background: var(--werkblau-hover); }
+.btn-outline { background: var(--weiss); color: var(--tinte); box-shadow: inset 0 0 0 1px var(--tinte-15); }
+.btn-outline:hover { background: var(--blau-hell); }
+.btn-outline.danger { color: var(--ziegel); }
+.desk-row .btn { flex: 1; }
+
+/* Preview controls */
+.preview-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem 0.75rem; padding-block: 0.25rem 1.25rem; font-size: 0.8rem; color: var(--tinte-55); }
+.preview-bar .seg button { font-size: 0.8rem; min-height: 2rem; padding: 0 0.7rem; }
+.text-link { appearance: none; border: 0; background: transparent; color: var(--blau); font-weight: 600; font-size: 0.8rem; padding: 0.4rem 0.25rem; text-decoration: underline; text-underline-offset: 0.2em; }
+
+/* Keypad sheet */
+.sheet {
+  position: fixed; inset: 0; z-index: 30;
+  background: var(--werkblau); color: var(--weiss);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sheet-in 0.22s ease-out;
+}
+.sheet-inner {
+  height: 100%; max-width: 30rem; margin-inline: auto;
+  display: flex; flex-direction: column;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0.4rem 0.9rem;
+}
+.sheet-top { display: flex; align-items: center; gap: 0.25rem; min-height: 3rem; }
+.sheet-top h2 { font-size: 1.3rem; }
+.icon-btn { appearance: none; border: 0; background: transparent; color: var(--weiss); width: 2.75rem; height: 2.75rem; margin-left: -0.6rem; border-radius: 999px; display: grid; place-items: center; }
+.icon-btn:hover { background: var(--weiss-10); }
+.icon-btn svg.i { width: 1.5rem; height: 1.5rem; }
+
+.sheet-sum { margin-top: 0.4rem; padding: 0.7rem 1rem; border-radius: 1rem; background: var(--weiss-10); }
+.sum-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; text-align: center; gap: 0.25rem 0.75rem; font-size: 0.9rem; color: var(--weiss-75); }
+.sum-row strong { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; color: var(--gelb); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sum-row small { font-family: var(--font-body); font-size: 0.85rem; font-weight: 500; color: var(--weiss-75); }
+.sheet-sum .track { margin-top: 0.55rem; height: 0.4rem; }
+.sheet-sum .fill { transition-duration: 0.3s; }
+/* Preview while typing: yellow is the smaller of the saved and the new total, the grey bar behind it reaches to the larger one. */
+.sheet-sum .track { position: relative; }
+.sheet-sum .fill { position: relative; z-index: 1; }
+.fill-change { position: absolute; top: 0; bottom: 0; left: 0; width: 0; z-index: 0; background: var(--vorschau); border-radius: 999px; transition: width 0.3s; }
+.fill-change.off { opacity: 0; }
+.sum-row strong.preview { color: var(--weiss-60); }
+
+.sheet-amount { flex: 1 1 auto; min-height: 7rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem; padding-block: 0.75rem; text-align: center; }
+.amount { font-family: var(--font-display); font-weight: 700; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: clamp(3rem, 17vw, 4.75rem); color: var(--gelb); }
+.amount.len-m { font-size: clamp(2.5rem, 13vw, 4rem); }
+.amount.len-l { font-size: clamp(2.1rem, 10.5vw, 3.25rem); }
+.amount.empty { color: var(--weiss-25); }
+.amount .u { font-size: 0.6em; margin-left: 0.15em; }
+.amount-hint { min-height: 1.5em; font-size: 0.95rem; color: var(--weiss-75); }
+.amount-hint.warn { color: var(--gelb); font-weight: 600; }
+
+.keypad { flex: 0 1 19rem; min-height: 11.5rem; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr); gap: 0.25rem; }
+.key {
+  appearance: none; border: 0; background: transparent; color: var(--weiss);
+  display: grid; place-items: center; border-radius: 1rem;
+  font-family: var(--font-display); font-weight: 600; font-size: clamp(1.6rem, 7.5vw, 2rem);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: background-color 0.12s;
+}
+.key:active, .key.pressed { background: var(--weiss-15); }
+.key:disabled { color: var(--weiss-25); cursor: default; }
+.key svg.i { width: 1.8rem; height: 1.8rem; }
+
+.sheet-bottom { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding-top: 0.75rem; }
+.save {
+  appearance: none; border: 0; margin-left: auto;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 1rem;
+  min-height: 3.5rem; min-width: 9.75rem; padding: 0 1.1rem 0 1.4rem; border-radius: 1.1rem;
+  background: var(--gelb); color: var(--tinte);
+  font-family: var(--font-display); font-weight: 700; font-size: 1.15rem;
+}
+.save:disabled { background: var(--weiss-15); color: var(--weiss-50); cursor: not-allowed; }
+
+/* Toast */
+/* Banner at the top: dark green with a check mark for saved changes, light yellow for hints. */
+.toast-wrap {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 40;
+  display: flex; justify-content: center; pointer-events: none;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+.toast { pointer-events: auto; width: 100%; max-width: 28rem; display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 1rem; border-radius: 1rem; background: var(--gruen-dunkel); color: var(--weiss); box-shadow: var(--shadow-banner); font-size: 0.95rem; font-weight: 600; animation: toast-in 0.2s ease-out; cursor: pointer; }
+.toast svg.i { color: var(--weiss); }
+.toast.info { background: var(--gelb-hell); color: var(--tinte); box-shadow: var(--shadow-banner), inset 0 0 0 1px var(--gelb-rand); }
+.toast.info svg.i { color: var(--tinte-70); }
+
+/* Admin page */
+.admin-main { padding-block: 1.5rem 1rem; display: grid; gap: 1.75rem; }
+.section { display: grid; gap: 0.75rem; }
+.section.ruled { border-top: 1px solid var(--tinte-08); padding-top: 1.5rem; }
+.section h2 { font-size: 1.5rem; }
+.muted { color: var(--tinte-70); }
+.small { font-size: 0.9rem; }
+.collapse-head { appearance: none; border: 0; width: 100%; display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.1rem; border-radius: 1.1rem; background: var(--weiss); color: var(--tinte); box-shadow: var(--shadow-card); text-align: left; }
+.collapse-head .t { flex: 1; min-width: 0; }
+.collapse-head strong { display: block; font-family: var(--font-display); font-size: 1.5rem; line-height: 1.15; letter-spacing: -0.02em; }
+.collapse-head svg.i { width: 1.5rem; height: 1.5rem; color: var(--tinte-55); transition: transform 0.2s; }
+.collapse-head[aria-expanded="true"] svg.i { transform: rotate(180deg); }
+.panel { display: grid; gap: 0.75rem; padding-top: 0.25rem; }
+.field { width: 100%; min-width: 0; padding: 0.75rem 1rem; border-radius: 0.9rem; border: 1px solid var(--tinte-15); background: var(--weiss); color: var(--tinte); font-size: max(1rem, 16px); }
+.field::placeholder { color: var(--tinte-55); }
+.field:focus { outline: none; border-color: var(--blau); box-shadow: 0 0 0 4px var(--blau-ring); }
+.row { display: flex; gap: 0.5rem; }
+.row .field { flex: 1; }
+.search { position: relative; }
+.search svg.i { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: var(--tinte-55); pointer-events: none; }
+.search .field { padding-left: 2.7rem; }
+.member-list { list-style: none; margin: 0; padding: 0; border-block: 1px solid var(--tinte-08); }
+.member-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; padding-block: 0.65rem; border-top: 1px solid var(--tinte-08); }
+.member-list li:first-child { border-top: 0; }
+.member-list .n { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.member-list .n small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--tinte-55); }
+.member-list .btns { display: flex; gap: 0.5rem; }
+.member-list .btn { min-height: 2.6rem; padding: 0 0.8rem; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; }
+
+@keyframes sheet-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .toast { animation: none; }
+  .fill, .fill-change, .big-btn, .key, .collapse-head svg.i { transition: none; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+</svg>
+
+<!-- Member page -->
+<div id="member-view">
+  <header class="band">
+    <div class="wrap band-inner">
+      <div class="topbar">
+        <div class="wordmark">Bietrunde<span>Entwurf</span></div>
+        <div class="who">
+          <span class="who-name">Anna Becker</span>
+          <button type="button" class="link-btn" data-inert>Abmelden</button>
+        </div>
+      </div>
+      <div data-progress="member"></div>
+    </div>
+  </header>
+
+  <main class="wrap member-main">
+    <section class="card" aria-labelledby="bid-heading">
+      <div class="card-head">
+        <h1 id="bid-heading">Dein Beitrag</h1>
+        <button type="button" class="mode-toggle" data-toggle-mode="member"></button>
+      </div>
+
+      <div class="own">
+        <p class="own-value" aria-live="polite"><span id="own-money"></span><span class="u">€</span></p>
+        <p class="own-value hours own-right" aria-live="polite"><span id="own-hours"></span><span class="u">h</span></p>
+      </div>
+
+      <div class="actions" id="actions">
+        <button type="button" class="big-btn btn-geld" data-open="geld">Beitrag</button>
+        <button type="button" class="big-btn btn-zeit" data-open="zeit" lang="de">Stunden&shy;beitrag</button>
+      </div>
+
+      <form class="desk" id="desk" hidden novalidate>
+        <label for="desk-input" id="desk-label">Dein Beitrag in Euro</label>
+        <div class="desk-field">
+          <input id="desk-input" inputmode="decimal" autocomplete="off" spellcheck="false">
+          <span class="suffix" id="desk-suffix">€</span>
+        </div>
+        <div class="desk-row">
+          <button type="submit" class="btn btn-primary" id="desk-save">Speichern</button>
+          <button type="button" class="btn btn-outline" id="desk-cancel">Abbrechen</button>
+        </div>
+      </form>
+    </section>
+
+    <div class="pin-note">
+      <span>Du nutzt noch die Start&#8209;PIN.</span>
+      <button type="button" class="chip" data-inert>PIN ändern</button>
+    </div>
+  </main>
+
+  <div class="wrap preview-bar">
+    <span>Entwurf mit Beispieldaten</span>
+    <div class="seg" role="group" aria-label="Eingabe testen als">
+      <button type="button" data-input="touch">Handy</button>
+      <button type="button" data-input="desk">Desktop</button>
+    </div>
+    <button type="button" class="text-link" data-view="admin">Admin-Ansicht</button>
+  </div>
+</div>
+
+<!-- Admin page -->
+<div id="admin-view" hidden>
+  <header class="band">
+    <div class="wrap band-inner flat">
+      <div class="topbar">
+        <div class="wordmark">Bietrunde<span>Entwurf</span></div>
+        <div class="who">
+          <span class="who-name">Admin</span>
+          <button type="button" class="link-btn" data-inert>Abmelden</button>
+        </div>
+      </div>
+      <div data-progress="admin"></div>
+    </div>
+  </header>
+
+  <main class="wrap admin-main">
+    <section class="section" aria-label="Mitglieder">
+      <button type="button" class="collapse-head" id="members-toggle" aria-expanded="false" aria-controls="members-panel">
+        <span class="t">
+          <strong>Mitglieder</strong>
+          <span class="muted small" id="members-summary"></span>
+        </span>
+        <svg class="i" aria-hidden="true"><use href="#i-down"/></svg>
+      </button>
+      <div class="panel" id="members-panel" hidden>
+        <form class="row" id="add-form" novalidate>
+          <input id="new-member" class="field" placeholder="Neues Mitglied" autocomplete="off" maxlength="60" aria-label="Neues Mitglied eintragen">
+          <button type="submit" class="btn btn-primary">Eintragen</button>
+        </form>
+        <div class="search">
+          <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="member-search" class="field" type="search" placeholder="Mitglied suchen" autocomplete="off" aria-label="Mitglied suchen">
+        </div>
+        <ul class="member-list" id="member-list"></ul>
+      </div>
+    </section>
+
+    <section class="section ruled" aria-labelledby="target-heading">
+      <h2 id="target-heading">Bedarf</h2>
+      <p class="muted" id="target-now"></p>
+      <form id="target-form" novalidate class="section">
+        <label for="target-input" style="font-weight:600">Neuer Bedarf in Euro (netto)</label>
+        <div class="row">
+          <input id="target-input" class="field" inputmode="decimal" autocomplete="off">
+          <button type="submit" class="btn btn-primary">Speichern</button>
+        </div>
+        <p class="hint" id="target-hint"></p>
+      </form>
+    </section>
+
+    <section class="section ruled" aria-labelledby="data-heading">
+      <h2 id="data-heading">Daten</h2>
+      <div class="grid2">
+        <button type="button" class="btn btn-outline" data-inert><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>CSV-Export</button>
+        <button type="button" class="btn btn-outline" data-inert><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>JSON-Export</button>
+      </div>
+      <p class="muted small">Exporte enthalten jedes Gebot netto und brutto, aber keine PINs. Import wie bisher.</p>
+    </section>
+
+    <section class="section ruled" aria-labelledby="settings-heading">
+      <h2 id="settings-heading">Einstellungen</h2>
+      <div class="setting">
+        <span style="font-weight:600">Beträge anzeigen</span>
+        <button type="button" class="mode-toggle" data-toggle-mode="admin"></button>
+      </div>
+      <p class="muted small">Gilt nur für deine Ansicht. Gespeichert wird immer netto.</p>
+      <div><button type="button" class="btn btn-outline" data-inert>Admin-PIN ändern</button></div>
+    </section>
+  </main>
+
+  <div class="wrap preview-bar">
+    <span>Entwurf mit Beispieldaten</span>
+    <button type="button" class="text-link" data-view="member">Zur Mitgliederseite</button>
+  </div>
+</div>
+
+<!-- Keypad sheet (touch devices) -->
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+  <div class="sheet-inner">
+    <div class="sheet-top">
+      <button type="button" class="icon-btn" id="sheet-close" aria-label="Schließen, ohne zu speichern">
+        <svg class="i" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
+      <h2 id="sheet-title">Dein Beitrag</h2>
+    </div>
+
+    <div class="sheet-sum">
+      <div class="sum-row">
+        <span><strong id="sum-value"></strong> <small id="sum-of"></small></span>
+      </div>
+      <div class="track" id="sum-track"><div class="fill" id="sum-fill"></div><div class="fill-change" id="sum-change"></div></div>
+    </div>
+
+    <div class="sheet-amount">
+      <p class="amount empty" id="amount" aria-live="polite"><span id="amount-text">0</span><span class="u" id="amount-unit">€</span></p>
+    </div>
+
+    <div class="keypad" id="keypad">
+      <button type="button" class="key" data-key="1">1</button>
+      <button type="button" class="key" data-key="2">2</button>
+      <button type="button" class="key" data-key="3">3</button>
+      <button type="button" class="key" data-key="4">4</button>
+      <button type="button" class="key" data-key="5">5</button>
+      <button type="button" class="key" data-key="6">6</button>
+      <button type="button" class="key" data-key="7">7</button>
+      <button type="button" class="key" data-key="8">8</button>
+      <button type="button" class="key" data-key="9">9</button>
+      <button type="button" class="key" data-key="," aria-label="Komma">,</button>
+      <button type="button" class="key" data-key="0">0</button>
+      <button type="button" class="key" data-key="back" aria-label="Letzte Ziffer löschen"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button>
+    </div>
+
+    <div class="sheet-bottom">
+      <button type="button" class="save" id="sheet-save">Speichern <svg class="i" aria-hidden="true"><use href="#i-next"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" aria-live="polite"><div class="toast" id="toast" role="status" hidden><svg class="i" aria-hidden="true"><use id="toast-icon" href="#i-check"/></svg><span id="toast-text"></span></div></div>
+
+<script>
+(() => {
+  const VAT = 1.19;
+  const MAX_HOURS = 744;
+  const KINDS = {
+    geld: { title: 'Dein Beitrag', unit: '€', maxInt: 6, maxDec: 2 },
+    zeit: { title: 'Dein Stundenbeitrag', unit: 'h', maxInt: 3, maxDec: 1 }
+  };
+
+  const store = {
+    get(key) { try { return localStorage.getItem(`bietrunde-entwurf.${key}`); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(`bietrunde-entwurf.${key}`, value); } catch { /* storage blocked */ } }
+  };
+
+  // Example data: the other members' sums plus Anna's own bid.
+  const state = {
+    target: 24000,
+    othersTotal: 16835,
+    othersCount: 11,
+    othersHours: 135.5,
+    own: 1585,
+    ownHours: 11.5,
+    mode: { member: store.get('mode') === 'brutto' ? 'brutto' : 'netto', admin: 'netto' },
+    input: window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'desk',
+    editing: null // { kind, raw, where: 'sheet' | 'desk' }
+  };
+
+  const NAMES = ['Anna Becker', 'Ben Hoffmann', 'Carla Neumann', 'Deniz Aydın', 'Emil Fischer', 'Fatma Yılmaz', 'Greta Lange', 'Hannah Weber', 'Ida Wagner', 'Jonas Krüger', 'Jörg Müller-Lüdenscheidt', 'Katharina Wolf', 'Lena Schneider', 'Luis Hartmann', 'Mara Schulz', 'Maximilian von Hohenberg-Schwarzenfels', 'Nils Berger', 'Ole Hansen', 'Paul', 'Rosa Zimmermann', 'Sophie Braun', 'Steffen', 'Tim Vogel', 'Zoë Kraus'];
+  const START_PIN = new Set(['Ben Hoffmann', 'Deniz Aydın', 'Greta Lange', 'Jonas Krüger', 'Luis Hartmann', 'Nils Berger', 'Paul', 'Rosa Zimmermann', 'Tim Vogel']);
+
+  const $ = (id) => document.getElementById(id);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const nf0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
+  const nf2 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const nf1 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+  const money = (n) => (Number.isInteger(r2(n)) ? nf0 : nf2).format(r2(n));
+  const hours = (n) => nf1.format(n);
+  // The total of all bids is shown in whole euros.
+  const whole = (n) => nf0.format(Math.round(n));
+  const shown = (net, mode) => (mode === 'brutto' ? r2(net * VAT) : net);
+  // Gross input -> net, rounded up to the cent (agreed: cents do not matter).
+  const toNet = (gross) => Math.ceil((Math.round(gross * 100) * 100) / 119) / 100;
+  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('de');
+
+  const totalNet = () => r2(state.othersTotal + state.own);
+  const bidCount = () => state.othersCount + (state.own > 0 ? 1 : 0);
+  const totalHours = () => state.othersHours + state.ownHours;
+
+  // Header progress, shared by both pages
+  const PROGRESS = `
+    <div class="stats">
+      <div>
+        <p class="big"><span data-p="total"></span><span class="u">€</span></p>
+        <p class="sub" data-p="target"></p>
+      </div>
+      <div class="stat-right">
+        <p class="big dim"><span data-p="hours"></span><span class="u">h</span></p>
+        <p class="sub">pro Monat</p>
+      </div>
+    </div>
+    <div class="track" role="progressbar" aria-label="Gedeckter Anteil des Bedarfs" aria-valuemin="0" aria-valuemax="100" data-p="bar"><div class="fill" data-p="fill"></div></div>
+    <p class="meta"><span data-p="pct"></span><span data-p="count"></span></p>`;
+  document.querySelectorAll('[data-progress]').forEach((el) => { el.innerHTML = PROGRESS; });
+
+  function renderProgress(root, mode) {
+    const q = (k) => root.querySelector(`[data-p="${k}"]`);
+    const total = totalNet();
+    const ratio = total / state.target;
+    const pct = Math.floor(ratio * 100);
+    q('total').textContent = whole(shown(total, mode));
+    q('target').textContent = `von ${whole(shown(state.target, mode))} €`;
+    q('hours').textContent = hours(totalHours());
+    q('fill').style.width = `${Math.min(100, ratio * 100)}%`;
+    q('bar').setAttribute('aria-valuenow', String(Math.min(100, pct)));
+    q('pct').textContent = ratio >= 1 ? `Bedarf gedeckt: ${pct} %` : `${pct} % gedeckt`;
+    const n = bidCount();
+    q('count').textContent = n === 1 ? '1 Gebot' : `${n} Gebote`;
+  }
+
+  function renderSwitches() {
+    document.querySelectorAll('[data-toggle-mode]').forEach((b) => {
+      const mode = state.mode[b.dataset.toggleMode];
+      const other = mode === 'netto' ? 'brutto' : 'netto';
+      b.textContent = mode === 'netto' ? 'Netto' : 'Brutto';
+      b.setAttribute('aria-label', `Beträge ${mode}, auf ${other} umschalten`);
+    });
+    document.querySelectorAll('[data-input]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.input === state.input)));
+  }
+
+  function renderMember() {
+    const mode = state.mode.member;
+    renderProgress(document.querySelector('[data-progress="member"]'), mode);
+    $('own-money').textContent = money(shown(state.own, mode));
+    $('own-hours').textContent = hours(state.ownHours);
+  }
+
+  function renderAdmin() {
+    const mode = state.mode.admin;
+    renderProgress(document.querySelector('[data-progress="admin"]'), mode);
+    $('target-now').textContent = `Aktuell ${money(shown(state.target, mode))} €`;
+    $('members-summary').textContent = `${NAMES.length} Mitglieder, ${START_PIN.size} davon mit Start-PIN`;
+    const needle = fold($('member-search').value.trim());
+    const rows = [...NAMES].sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' })).filter((n) => !needle || fold(n).includes(needle));
+    $('member-list').innerHTML = rows.length
+      ? rows.map((n) => `
+        <li>
+          <span class="n">${n}${START_PIN.has(n) ? '<small>Start-PIN</small>' : ''}</span>
+          <span class="btns">
+            <button type="button" class="btn btn-outline" data-inert>PIN setzen</button>
+            <button type="button" class="btn btn-outline danger" data-inert aria-label="${n} löschen"><svg class="i" aria-hidden="true"><use href="#i-trash"/></svg></button>
+          </span>
+        </li>`).join('')
+      : `<li><span class="muted">Kein Mitglied passt zu „${$('member-search').value.trim()}“.</span></li>`;
+  }
+
+  function render() {
+    renderSwitches();
+    renderMember();
+    renderAdmin();
+    if (state.editing) renderEditor();
+  }
+
+  // Entering amounts
+
+  function pressKey(raw, key, kind) {
+    const k = KINDS[kind];
+    if (key === 'back') return raw.slice(0, -1);
+    if (key === ',') return raw.includes(',') ? raw : `${raw || '0'},`;
+    const [int, dec] = raw.split(',');
+    if (raw.includes(',')) return dec.length >= k.maxDec ? raw : raw + key;
+    if (int === '0') return key;
+    return int.length >= k.maxInt ? raw : raw + key;
+  }
+
+  // Typed text from the desktop field -> the same "raw" form the keypad produces.
+  function sanitize(text, kind) {
+    const k = KINDS[kind];
+    let s = text.replace(/\./g, ',').replace(/[^\d,]/g, '');
+    const comma = s.indexOf(',');
+    if (comma !== -1) s = s.slice(0, comma + 1) + s.slice(comma + 1).replace(/,/g, '');
+    let [int, dec] = s.split(',');
+    int = int.replace(/^0+(?=\d)/, '').slice(0, k.maxInt);
+    if (dec === undefined) return int;
+    return `${int || '0'},${dec.slice(0, k.maxDec)}`;
+  }
+
+  const group = (int) => int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  function formatRaw(raw) {
+    const [int, dec] = raw.split(',');
+    return raw.includes(',') ? `${group(int || '0')},${dec}` : group(int);
+  }
+
+  function evaluate(kind, raw) {
+    // An empty field counts as 0, like the dimmed "0" it shows.
+    const value = raw === '' ? 0 : Number(raw.replace(',', '.'));
+    // The editor starts with the current value; nothing to save until it changes.
+    if (state.editing && raw === state.editing.initial) return { value, ok: false, hint: '', unchanged: true };
+    if (kind === 'geld') {
+      const mode = state.mode.member;
+      const before = state.own === 0 ? 'Bisher kein Beitrag' : `Bisher ${money(shown(state.own, mode))} €`;
+      if (value === 0) return { value, ok: true, hint: state.own === 0 ? before : 'Mit 0 € ziehst du deinen Beitrag zurück.' };
+      return { value, ok: true, hint: before };
+    }
+    const before = `Bisher ${hours(state.ownHours)} h`;
+    if (value > MAX_HOURS) return { value, ok: false, hint: `Höchstens ${MAX_HOURS} h`, warn: true };
+    return { value, ok: true, hint: before };
+  }
+
+  // Current value in the editor's own form: "1585", "1886,15", "11,5"; empty for 0.
+  function currentRaw(kind) {
+    const v = kind === 'geld' ? shown(state.own, state.mode.member) : state.ownHours;
+    if (!v) return '';
+    if (Number.isInteger(v)) return String(v);
+    return v.toFixed(KINDS[kind].maxDec).replace('.', ',');
+  }
+
+  function openEditor(kind) {
+    const raw = currentRaw(kind);
+    state.editing = { kind, raw, initial: raw, where: state.input === 'touch' ? 'sheet' : 'desk' };
+    if (state.editing.where === 'sheet') {
+      $('sheet').hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      $('sheet-close').focus();
+    } else {
+      $('actions').hidden = true;
+      $('desk').hidden = false;
+      $('desk-input').value = raw;
+      $('desk-input').focus();
+      $('desk-input').setSelectionRange(raw.length, raw.length);
+    }
+    renderEditor();
+  }
+
+  function closeEditor() {
+    if (!state.editing) return;
+    const { where, kind } = state.editing;
+    state.editing = null;
+    if (where === 'sheet') {
+      $('sheet').hidden = true;
+      document.documentElement.style.overflow = '';
+    } else {
+      $('desk').hidden = true;
+      $('actions').hidden = false;
+    }
+    const opener = document.querySelector(`[data-open="${kind}"]`);
+    if (opener) opener.focus({ preventScroll: true });
+  }
+
+  function renderEditor() {
+    const { kind, raw, where } = state.editing;
+    const k = KINDS[kind];
+    const result = evaluate(kind, raw);
+    const mode = state.mode.member;
+
+    if (where === 'sheet') {
+      $('sheet-title').textContent = k.title;
+      const text = raw === '' ? '0' : formatRaw(raw);
+      $('amount-text').textContent = text;
+      $('amount-unit').textContent = k.unit;
+      const amount = $('amount');
+      amount.classList.toggle('empty', raw === '');
+      amount.classList.toggle('len-m', text.length >= 7 && text.length < 9);
+      amount.classList.toggle('len-l', text.length >= 9);
+      $('sheet-save').disabled = !result.ok;
+      document.querySelector('[data-key=","]').disabled = raw.includes(',');
+      // While typing, the totals strip previews the sums with the new value.
+      if (kind === 'geld') {
+        const ownNet = result.value === null || result.unchanged ? state.own : (mode === 'brutto' ? toNet(result.value) : r2(result.value));
+        const preview = r2(state.othersTotal + ownNet);
+        const current = totalNet();
+        const changed = preview !== current;
+        const pct = (n) => Math.min(100, (n / state.target) * 100);
+        $('sum-value').textContent = `${whole(shown(preview, mode))} €`;
+        $('sum-value').classList.toggle('preview', changed);
+        $('sum-of').textContent = `von ${whole(shown(state.target, mode))} €`;
+        $('sum-track').hidden = false;
+        $('sum-fill').style.width = `${pct(Math.min(current, preview))}%`;
+        // The grey bar is only hidden while nothing changed, so it never grows in from the left.
+        $('sum-change').style.width = `${pct(Math.max(current, preview))}%`;
+        $('sum-change').classList.toggle('off', !changed);
+      } else {
+        const ownHours = result.value === null || result.unchanged || result.value > MAX_HOURS ? state.ownHours : Math.round(result.value * 10) / 10;
+        $('sum-value').textContent = `${hours(state.othersHours + ownHours)} h`;
+        $('sum-value').classList.toggle('preview', ownHours !== state.ownHours);
+        $('sum-of').textContent = 'pro Monat';
+        $('sum-track').hidden = true;
+      }
+    } else {
+      $('desk-label').textContent = kind === 'geld' ? 'Dein Beitrag in Euro' : 'Deine Stunden';
+      $('desk-suffix').textContent = k.unit;
+      $('desk-input').placeholder = kind === 'geld' ? money(shown(state.own, mode)) : hours(state.ownHours);
+      $('desk-save').disabled = !result.ok;
+    }
+  }
+
+  function saveEditor() {
+    const { kind, raw } = state.editing;
+    const result = evaluate(kind, raw);
+    if (!result.ok) return;
+    const mode = state.mode.member;
+    if (kind === 'geld') {
+      const net = mode === 'brutto' ? toNet(result.value) : r2(result.value);
+      state.own = net;
+      toast(net === 0 ? 'Dein Beitrag ist zurückgezogen.' : `Dein Beitrag ist jetzt ${money(shown(net, mode))} €.`);
+    } else {
+      state.ownHours = Math.round(result.value * 10) / 10;
+      toast(`Dein Stundenbeitrag ist jetzt ${hours(state.ownHours)} h.`);
+    }
+    closeEditor();
+    render();
+  }
+
+  function press(key) {
+    if (!state.editing || state.editing.where !== 'sheet') return;
+    const next = pressKey(state.editing.raw, key, state.editing.kind);
+    // Hours above the maximum cannot be typed at all, so no warning is needed.
+    if (state.editing.kind === 'zeit' && Number(next.replace(',', '.')) > MAX_HOURS) return;
+    state.editing.raw = next;
+    renderEditor();
+  }
+
+  // Toast
+
+  let toastTimer;
+  function toast(text, tone = 'ok') {
+    $('toast-text').textContent = text;
+    $('toast-icon').setAttribute('href', tone === 'ok' ? '#i-check' : '#i-info');
+    const el = $('toast');
+    el.classList.toggle('info', tone === 'info');
+    el.hidden = true;
+    void el.offsetWidth;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
+  }
+  $('toast').addEventListener('click', () => { $('toast').hidden = true; });
+
+  // Events
+
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if (!t) return;
+    if (t.dataset.open) return openEditor(t.dataset.open);
+    if (t.dataset.key) return press(t.dataset.key);
+    if (t.dataset.toggleMode) {
+      const scope = t.dataset.toggleMode;
+      state.mode[scope] = state.mode[scope] === 'netto' ? 'brutto' : 'netto';
+      if (scope === 'member') store.set('mode', state.mode.member);
+      return render();
+    }
+    if (t.dataset.input) {
+      state.input = t.dataset.input;
+      return renderSwitches();
+    }
+    if (t.dataset.view) {
+      closeEditor();
+      $('member-view').hidden = t.dataset.view !== 'member';
+      $('admin-view').hidden = t.dataset.view !== 'admin';
+      window.scrollTo(0, 0);
+      return undefined;
+    }
+    if (t.id === 'sheet-close' || t.id === 'desk-cancel') return closeEditor();
+    if (t.id === 'sheet-save') return saveEditor();
+    if (t.id === 'members-toggle') {
+      const open = t.getAttribute('aria-expanded') !== 'true';
+      t.setAttribute('aria-expanded', String(open));
+      $('members-panel').hidden = !open;
+      return undefined;
+    }
+    if ('inert' in t.dataset) toast('Im Entwurf ohne Funktion.', 'info');
+    return undefined;
+  });
+
+  // Short visual feedback on the keypad, also for physical keys.
+  function flash(key) {
+    const btn = document.querySelector(`[data-key="${key}"]`);
+    if (!btn) return;
+    btn.classList.add('pressed');
+    setTimeout(() => btn.classList.remove('pressed'), 120);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!state.editing) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeEditor(); return; }
+    if (state.editing.where !== 'sheet') return;
+    if (/^\d$/.test(e.key)) { press(e.key); flash(e.key); e.preventDefault(); }
+    else if (e.key === ',' || e.key === '.') { press(','); flash(','); e.preventDefault(); }
+    else if (e.key === 'Backspace') { press('back'); flash('back'); e.preventDefault(); }
+    else if (e.key === 'Enter') { e.preventDefault(); saveEditor(); }
+  });
+
+  $('desk-input').addEventListener('input', (e) => {
+    const clean = sanitize(e.target.value, state.editing.kind);
+    const over = state.editing.kind === 'zeit' && Number(clean.replace(',', '.')) > MAX_HOURS;
+    const next = over ? state.editing.raw : clean;
+    if (next !== e.target.value) e.target.value = next;
+    state.editing.raw = next;
+    renderEditor();
+  });
+  $('desk').addEventListener('submit', (e) => { e.preventDefault(); saveEditor(); });
+
+  $('member-search').addEventListener('input', renderAdmin);
+  $('add-form').addEventListener('submit', (e) => { e.preventDefault(); toast('Im Entwurf ohne Funktion.', 'info'); });
+
+  // Accepts "24000", "24.000", "24000,50" and "1.234,56".
+  function parseAmount(input) {
+    let s = String(input).replace(/[€\s ]/g, '');
+    if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(',', '.');
+    return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+  }
+  $('target-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const amount = parseAmount($('target-input').value);
+    const hint = $('target-hint');
+    if (!Number.isFinite(amount) || amount <= 0) {
+      hint.textContent = 'Gib einen Betrag größer als 0 ein, zum Beispiel 24000.';
+      hint.classList.add('warn');
+      return;
+    }
+    hint.textContent = '';
+    hint.classList.remove('warn');
+    state.target = r2(amount);
+    $('target-input').value = '';
+    toast(`Der Bedarf ist jetzt ${money(state.target)} € netto.`);
+    render();
+  });
+
+  render();
+})();
+</script>

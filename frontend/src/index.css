@@ -1,0 +1,166 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/bricolage-grotesque';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* The canvas is blue, so scrolling past the top (rubber band) shows the header colour;
+     the body paints the light page background on top of it. */
+  html {
+    @apply bg-werkblau;
+    font-size: 106.25%;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-papier font-sans text-tinte antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 3px solid theme('colors.blau');
+    outline-offset: 2px;
+  }
+
+  .on-dark :focus-visible {
+    outline-color: theme('colors.gelb');
+  }
+
+  /* Inputs below 16px make iOS zoom into the page. */
+  input {
+    font-size: max(1rem, 16px);
+  }
+
+  /* Search fields have their own clear button. */
+  input[type='search']::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+
+@layer components {
+  /* Slowly drifting light in the header. Only transform and opacity are animated,
+     so the browser moves a cached layer and never repaints. The layer is 2.6x as wide
+     and 1.6x as tall as the header and the glow fades out completely inside it, so
+     moving it never shows an edge. It starts at 85 % / 55 % of the header. */
+  .band-glow {
+    position: absolute;
+    inset: -20% -100% -40% -60%;
+    pointer-events: none;
+    background: radial-gradient(24% 37% at 55.8% 46.9%, #365F82 0%, rgb(54 95 130 / 0.3) 45%, transparent 100%);
+    will-change: transform, opacity;
+    animation: band-glow-drift 13s ease-in-out infinite alternate;
+  }
+
+  @keyframes band-glow-drift {
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: translate3d(-6%, 2%, 0) scale(1.06);
+      opacity: 0.8;
+    }
+    100% {
+      transform: translate3d(-11%, 3%, 0) scale(0.97);
+      opacity: 1;
+    }
+  }
+
+  .progress-track {
+    @apply h-3 overflow-hidden rounded-full bg-white/15;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full bg-gelb;
+    transition: width 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .card {
+    @apply rounded-2xl bg-white shadow-card;
+  }
+
+  .btn {
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-gelb {
+    @apply btn bg-gelb text-tinte hover:bg-[#EBCF36] active:bg-[#E0C21F];
+  }
+
+  .btn-blau {
+    @apply btn bg-werkblau text-white hover:bg-[#2A4C68];
+  }
+
+  .btn-leise {
+    @apply btn bg-transparent text-blau hover:bg-blau-hell;
+  }
+
+  .btn-rand {
+    @apply btn border border-tinte/15 bg-white text-tinte hover:border-tinte/30 hover:bg-blau-hell;
+  }
+
+  .btn-ziegel {
+    @apply btn bg-ziegel text-white hover:bg-[#8E2F1F];
+  }
+
+  /* Bid buttons: soft yellow tiles with a gentle press-down. */
+  .bid-step {
+    @apply flex min-h-[3.75rem] select-none items-center justify-center rounded-2xl bg-gelb font-display text-xl font-bold tracking-tight text-tinte transition duration-150 hover:bg-[#F0D33D] active:scale-[0.96] active:bg-[#E6C82C] disabled:cursor-not-allowed disabled:opacity-40;
+    box-shadow: inset 0 -3px 0 rgb(20 35 47 / 0.12), 0 1px 2px rgb(20 35 47 / 0.08);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .bid-step:active {
+    box-shadow: inset 0 -1px 0 rgb(20 35 47 / 0.12);
+  }
+
+  .bid-fine {
+    @apply flex min-h-[3.25rem] select-none items-center justify-center gap-2 rounded-2xl bg-blau-hell font-display text-lg font-semibold text-werkblau transition duration-150 hover:bg-[#E1EAF1] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .chip {
+    @apply inline-flex min-h-[2.25rem] items-center gap-1.5 rounded-full px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .field {
+    @apply block w-full rounded-xl border border-tinte/15 bg-white px-4 py-3 text-tinte shadow-sm transition placeholder:text-tinte/45 focus:border-blau focus:outline-none focus:ring-4 focus:ring-blau/15;
+  }
+}
+
+/* Banner slides in from the bottom. */
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.notice-in {
+  animation: notice-in 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+
+  .notice-in {
+    animation: none;
+  }
+
+  .band-glow {
+    animation: none;
+  }
+}

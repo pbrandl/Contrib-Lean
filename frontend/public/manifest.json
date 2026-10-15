@@ -1,0 +1,26 @@
+{
+  "short_name": "Bietrunde",
+  "name": "Bietrunde FRANZ!werk Tübingen",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#1F3B52",
+  "background_color": "#F6F6F3"
+}

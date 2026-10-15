@@ -1,0 +1,239 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (counted up with buttons) and the hours per month they can contribute (typed in). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. `README.md` has the operations guide (data folder, backups, PIN reset, restore).
+
+- `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
+- `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
+
+User-facing text is German and uses "du". Server error messages are shown to users as they are (`HttpError` message → `ApiError` message in the frontend), so write them in German. Code and comments are in English.
+
+## Commands
+
+Backend (`backend/`):
+
+```bash
+npm ci
+node server.js                      # env: PORT (3001), HOST, DATA_DIR (./data)
+node test.js                        # copies data/database.json to a temp dir, starts the server on a random port
+node test.js /nonexistent           # same, but against a fresh database (admin PIN 0000)
+```
+
+`test.js` is one sequential script: later checks reuse tokens and members from earlier ones, so a single check cannot run on its own. The admin checks log in with PIN `0000`. Against a copy of a real database where the admin PIN was changed they fail, so use a fresh database. It uses global `fetch` (Node 18+).
+
+Frontend (`frontend/`):
+
+```bash
+npm ci
+CI=true npx react-scripts test --watchAll=false                      # all tests
+CI=true npx react-scripts test --watchAll=false src/csv.test.js      # one file
+CI=true npx react-scripts test --watchAll=false -t "round-trips"     # one test by name
+CI=true npm run build               # ESLint runs inside the build; CI=true turns warnings into errors
+```
+
+There is no separate lint script. `npm start` has no dev proxy and the backend sends no CORS headers, so the dev server cannot reach the API. To run the whole app locally, serve the build from the backend's own `app`: require `backend/server.js`, add `express.static('frontend/build')` and a `/admin` route that sends `index.html`, then call `start()`.
+
+Deploy on the Uberspace (from README):
+
+```bash
+cd ~/fundraiser-app/frontend && npm run build && rsync -a --delete build/ ~/html/
+supervisorctl restart fundraiser
+```
+
+## Architecture
+
+### Hosting
+
+Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/admin` to `index.html`, and `App.js` picks `AdminApp` or `MemberApp` from the path. The Uberspace web backend forwards `/api` **with the full path** to the supervisor service `fundraiser` on port 3001, so every route lives on the `/api` router. `trust proxy` is `1` (exactly one proxy), so `req.ip` is the client address from `X-Forwarded-For`.
+
+### Data (`backend/data/`)
+
+`database.json` contains `{ rev, users, contributions, hours, targetAmount }`:
+
+- `users`: `{ id, name, pinHash, pinVersion, defaultPin }`. The admin is the user with id `admin`. Member ids are `Date.now()`-based strings.
+- `contributions` / `hours`: maps from user id to value. They only hold values > 0; `setContribution`/`setHours` delete the key at 0.
+- `rev`: grows with every write.
+
+Next to it: `audit.log` (one JSON line per change), `backups/` (daily copy plus one before every import) and `session-secret`. `migrateDatabase()` runs at startup and converts the old plain-text-PIN format.
+
+### Write path (keep these invariants)
+
+- **Every change goes through `mutate(change)`.** It is a single promise queue: it re-reads the file, runs `change(data)`, increments `rev`, makes the daily backup and writes atomically (tmp file + fsync + rename). Throwing an `HttpError` inside `change` aborts without writing. Reads (`authenticate`, `/public`) read the file directly, outside the queue.
+- **Bids are deltas today.** `POST /me/contribution {delta}` adds to the stored bid on the server. The frontend (`MemberPage.flush`) collects clicks in `queueRef` while a request is in flight and sends their sum next, which makes fast or parallel clicks safe (tested with 200 parallel clicks). Hours are absolute (`PUT /me/hours`) and rounded to half hours on the server. The new bidding flow replaces the delta with an absolute value; see "New bidding flow".
+- **Every state response carries `rev`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp) drops any response whose `rev` is older than what it shows. New endpoints that return state must include `summary(data)`.
+- `audit()` runs after `mutate()` resolves.
+
+### Sessions and login
+
+- Tokens are stateless HMAC-signed payloads `{ uid, pv, role, exp }`. `authenticate(role)` checks the signature, the role and that `pv` equals the user's current `pinVersion`, so every PIN change (`setPin`) ends all older sessions.
+- PIN-change endpoints return a fresh `session`, and the frontend must store it. `AdminApp.logout` ignores a 401 from a request that used an older token.
+- Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`.
+- Login throttling is in memory (lost on restart): failures are counted per `userId|ip` (5 failures, then a lock starting at 1 minute and doubling up to 1 h) plus per IP (50 failures in 15 min block all logins from that IP). With loopback or no forwarded address, the lock applies per account only. This is known to break in the intended setting; see "Open work".
+
+### Response shapes and privacy
+
+- `summary()`, `memberView()` and `adminView()` build every response. `/public` returns the member names and the totals only.
+- **Individual bids are anonymous by design.** The admin screen must not show who bid what; only the export contains single bids.
+- No response or export may ever contain `pin`/`pinHash`; `test.js` checks this.
+
+### Import and export
+
+- CSV is parsed and written in the browser (`frontend/src/csv.js`). It accepts `,` or `;`, German number formats and a BOM, and guards against spreadsheet formulas. The browser always sends JSON to `POST /admin/import`.
+- The import replaces all members, bids and hours. It matches existing members by id, then by name (case-insensitive, `sameName`). Matched members keep their PIN unless the file sets one; new members get `DEFAULT_PIN`. A backup is written first.
+
+### Frontend structure
+
+- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`; 401 means log out), session storage, de-DE formatting, `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
+- `ui.js`: shared components (`Band` header, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice`).
+- `MemberApp.js`:
+  - `FrontPage`: name list, search, PIN step.
+  - `MemberPage`: bid, `HoursCard`, PIN change.
+  - Both use the History API so the phone's back gesture works: the PIN step pushes an entry, and leaving the member page logs out.
+- Polling intervals: front page 15 s (paused in the PIN step), member page 10 s (skipped while a bid is being sent), admin 15 s.
+- Styling: Tailwind with a custom palette in German names (`gelb`, `werkblau`, `blau`, `tinte`, `ziegel`, `papier`, …) and component classes in `index.css` (`.btn-*`, `.card`, `.field`, `.bid-step`, `.chip`). The root font size is 106.25 %, and inputs stay at 16 px or more so iOS does not zoom.
+- The layout must work down to 320 px width. Check 320, 360 and 375 px, not just 390 px.
+
+### Rules duplicated between client and server
+
+If you change one of these, update both sides:
+
+| Rule | Server | Client |
+|---|---|---|
+| PIN 4–6 digits | `PIN_PATTERN` | `isPin`, `csv.js` |
+| Max. hours 744 | `MAX_HOURS` | `HoursCard` |
+| Name max. 60 characters | `MAX_NAME_LENGTH` | `maxLength` in `AdminApp` |
+| Start PIN 1234, admin PIN 0000 | `DEFAULT_PIN`, `ADMIN_DEFAULT_PIN` | texts in `AdminApp` |
+| Max. delta per request 10,000 € (goes away with the new bidding flow) | `MAX_STEP` | `flush` sends the sum of all clicks queued during one request, which must stay below it |
+| Hours precision 0.5 h (0.1 h with the new bidding flow) | `requireHours` | `HoursCard` |
+
+## Product decisions
+
+- The features are sufficient for now; do not add new ones unless asked.
+- Anonymity of bids is intended (see above).
+- The public name list is acceptable because the app is used only temporarily.
+- Hours have no target. The maximum stays 744 h per month.
+- Amounts are netto. Brutto (× 1.19) is only a display option for members and the admin; exports contain both.
+- The bidding takes place **at a members' meeting where everyone is on the same WLAN**, so many phones share one public IP and log in at the same time.
+
+## Open work (agreed October 2026)
+
+Remove items here once they are done.
+
+1. **Login locks must not hit people who share a WLAN** (highest priority). Today 50 wrong PINs from one IP within 15 minutes block every login from that network, the admin's too. A per-account lock keyed by IP also locks the real owner if they are in the same WLAN. The fix must also cover item 3, and the README section "Security model" ("Other devices are not affected") must be updated with it.
+2. **New bidding flow**, see the next section.
+3. Brute force across many addresses: there is no per-account limit over all IPs (one IPv6 /64 gives an attacker unlimited addresses). Add one, group IPv6 by /64, and require a longer admin PIN.
+4. Audit log: record IP and user agent, and write the line inside the write queue so it is never lost or out of order.
+5. `npm audit fix` in `backend/` (Express dependencies).
+6. Security headers (clickjacking protection, `nosniff`, Referrer-Policy): check with `curl -I https://franz.uber.space` what Uberspace already sets, then add the rest in `.htaccess`.
+7. `fetch` has no timeout, so a hanging request blocks the page. Abort after about 15 s and reload the real state from the server. With the absolute bid from item 2 a retry is safe.
+8. JSON import preview: the total only reads `contributions[id]`, while the server also accepts `contribution` per user. Also show the hours sum in the CSV and JSON preview.
+9. Small fixes:
+   - The `.htaccess` cache rule misses `*.chunk.js` and `static/media` (fonts).
+   - Backup file names use the UTC date.
+   - `set-pin.js` always sets `defaultPin: false`.
+
+Deferred or not wanted:
+
+- Individual random start PINs. The shared start PIN 1234 lets members bid in each other's name; this is accepted for now.
+- CSV export for German Excel (semicolon and decimal comma): not wanted.
+
+## New bidding flow (agreed spec)
+
+Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page with example data; open it in a browser. It was reviewed on a phone, and its layout and its `pressKey`, `sanitize`, `evaluate` and `toNet` functions are the agreed behavior. The FRANZ!werk logo is left out of it on purpose; the app keeps its logo.
+
+### Amounts
+
+- Everything is stored, sent, imported and summed **netto**. Brutto is netto × 1.19, rounded to the cent, and is for display only.
+- Members type euros with up to 2 decimals (e.g. 10,87) and hours with 1 decimal. The maximum stays 744 h; the server rounds hours to 0.1 h instead of 0.5 h.
+- The typed value **replaces** the previous bid. 0 withdraws the bid, so the Reset button goes away.
+- In brutto mode the member types brutto. The netto value is brutto / 1.19, rounded **up** to the cent. A 1-cent difference when it is shown as brutto again is accepted.
+- The total of all bids and the Bedarf next to it (header and keypad sheet) are shown rounded to whole euros. Own bids keep their cents. The server keeps the exact sum.
+
+### Backend
+
+- Replace `POST /me/contribution {delta}` and `POST /me/contribution/withdraw` with `PUT /me/contribution {amount}`: netto, 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`. `MAX_STEP` goes away.
+- Keep `rev` in the response and the audit line with from/to.
+- Remove the click queue in the frontend (`queueRef`, `flush`, `inFlight`).
+- Update `test.js`. The 200-parallel-clicks check becomes parallel absolute writes: the last write wins and nothing breaks.
+- Export: CSV gets a `contribution_gross` column next to `contribution` (netto), JSON a `contributionsGross` map next to `contributions`. The import keeps reading the netto values and ignores the brutto ones.
+
+### Member page
+
+- **Header:**
+  - Total of all bids with "von X €" (no "Bedarf", no "netto").
+  - Total hours with "pro Monat"; this is the only "pro Monat" on the page.
+  - Progress bar.
+  - It must fit down to 320 px: numbers wrap to a new line instead of being cut off.
+  - Generous spacing between the top bar, the numbers, the bar and the line below it, so it does not look crowded. The values are in the prototype CSS (`.topbar`, `.stats`, `.track`, `.meta`, `.band-inner`).
+  - "Abmelden" is plain grey text, without padding or highlight, in the same font size as the name next to it, so both sit on one line.
+- **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
+  - Heading left, netto/brutto toggle right on the same line.
+  - Below it: own bid (€) left and own hours (h) right, in the same font size and without labels.
+  - Below that: two equal buttons "Beitrag" (left) and "Stundenbeitrag" (right), both light blue (`blau-hell`), not yellow, text only without icons.
+- **Netto/brutto toggle:**
+  - A plain text button that shows the current mode ("Netto"/"Brutto"), slightly smaller than body text and grey.
+  - No padding (the text ends flush with the card edge), no background, no hover highlight.
+  - It switches every amount on the member page, including the keypad sheet. The sheet has no toggle of its own: what the member types counts in the mode set on the member page.
+  - The choice is stored per device; default is netto.
+  - There are no other "netto"/"brutto" labels on the member page.
+- **What goes away:**
+  - The old PIN card. The start-PIN hint shrinks to one line with "PIN ändern".
+  - The separate `HoursCard`. This replaces the old open items about the clipped hours field and the clipped header.
+- **Front page before login:** it has no toggle, so its header says "von X € netto".
+
+### Keypad sheet (touch devices, `pointer: coarse`, including tablets)
+
+A tap on "Beitrag" or "Stundenbeitrag" opens a full-screen dark blue sheet. It must fit on one screen without scrolling on every touch device.
+
+- **Top:** close button (X) and the title "Dein Beitrag" / "Dein Stundenbeitrag".
+- **Totals strip:**
+  - Euros: the total of all bids as "X € von Y €" with a thin progress bar.
+  - Hours: "N h pro Monat", without bar.
+  - No "Alle Gebote" label.
+  - The number and "von Y €" are centered.
+  - While the member types, the strip previews the change in grey. The number shows the new total in grey (the others' sum plus the new value, converted to netto in brutto mode). The yellow bar shows the smaller of the saved and the new total, so it shrinks when the bid goes down. A grey bar behind it reaches to the larger of the two: it shows the added amount when the bid goes up and the removed amount when it goes down. The yellow bar always keeps its rounded end. Both bars animate their width together (about 0.3 s). While nothing changed, the grey bar is only hidden at the width of the current total, not shrunk to 0, so it never grows in from the left. With an empty or unchanged input everything is yellow and shows the current totals. Hours work the same way (number only, no bar).
+- **Entered value:**
+  - Shown large. It starts with the current bid (or hours) already filled in, so a small change needs only a few keys: backspace, then the new digits. When everything is deleted it shows a dimmed "0" and counts as 0, the same as typing 0: the preview leaves the own bid out, and "Speichern" withdraws it.
+  - No hint lines below it. Hours above 744 cannot be typed at all: the key is ignored.
+- **Keypad:**
+  - The page's own keypad, not the phone keyboard: 1–9, comma, 0, backspace.
+  - Euros: at most 6 integer digits and 2 decimals. Hours: at most 3 integer digits and 1 decimal.
+  - The rows shrink on short screens, but not below 44 px.
+- **Bottom right:** "Speichern" (yellow), disabled until the value is valid and differs from the current one.
+- **Physical keys** also work: digits, comma or period, Backspace, Enter saves, Esc closes.
+
+### Banners (whole app: member page, front page and admin)
+
+The notices from `useNotice`/`Notice` in `ui.js` change:
+
+- **Position:** at the top of the screen instead of the bottom, below the safe area, sliding in from above.
+- **Colour:**
+  - Saved changes: dark green (`#23774A`) with white text and a white check mark.
+  - Errors: `ziegel` with white text.
+  - Never white on the white page.
+- **Texts:** no "Gespeichert:" prefix, because the check mark already says it. For example "Dein Beitrag ist jetzt 1.600 €.", "Dein Beitrag ist zurückgezogen.", "Dein Stundenbeitrag ist jetzt 12 h.".
+- **Behaviour:** confirmations still disappear on their own; a tap closes a banner.
+
+### Desktop (fine pointer)
+
+Not designed in detail yet; this is the next step. So far the prototype only replaces the buttons with an input field:
+
+A click on one of the buttons replaces the two buttons in the card with:
+- a large input field that gets the focus and starts with the current value, cursor at the end,
+- "Speichern" and "Abbrechen".
+
+Enter saves, Esc cancels. A period is accepted as decimal separator. As on the keypad there are no hint lines, and hours above 744 cannot be typed.
+
+### Admin page
+
+- **"Einstellungen":**
+  - A new section holding the same netto/brutto text toggle, plus the Admin-PIN change.
+  - The toggle only affects the admin's own display.
+  - The Bedarf is always entered netto ("Neuer Bedarf in Euro (netto)").
+- **Member list:**
+  - Collapsible, and collapsed by default.
+  - Its header shows "N Mitglieder, M davon mit Start-PIN".
+- **Anonymity is unchanged:** the admin sees no individual bids outside the export.
