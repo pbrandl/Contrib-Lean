@@ -218,6 +218,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
   - The rows shrink on short screens, but not below 44 px.
 - **Bottom right:** "Speichern" (yellow), disabled until the value is valid and differs from the current one.
 - **Physical keys** also work: digits, comma or period, Backspace, Enter saves, Esc closes.
+- **Phones in landscape** (less than 540 px high): the amount is on the left, the keypad and "Speichern" on the right, so it still fits. Should a screen be too short even for that, the sheet scrolls.
 
 ### Banners (whole app: member page, front page and admin)
 

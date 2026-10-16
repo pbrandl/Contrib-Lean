@@ -181,8 +181,8 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
 
   return (
     <div className="sheet on-dark" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onMouseDown={onSheetMouseDown}>
-      <div className="sheet-inner">
-        <div className="flex min-h-[3rem] items-center gap-1">
+      <div className={`sheet-inner${keypad ? ' with-keypad' : ''}`}>
+        <div className="sheet-head flex min-h-[3rem] items-center gap-1">
           <button ref={closeRef} type="button" className="sheet-close" onClick={onClose} aria-label="Schließen, ohne zu speichern">
             <X className="h-6 w-6" aria-hidden="true" />
           </button>
@@ -245,7 +245,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
           </div>
         )}
 
-        <div className="flex items-center pt-3">
+        <div className="sheet-foot flex items-center pt-3">
           <button type="button" className="save" onClick={save} disabled={unchanged || busy || waiting}>
             {busy ? 'Wird gespeichert …' : 'Speichern'}
             {!busy && <ChevronRight className="h-6 w-6" aria-hidden="true" />}
