@@ -145,19 +145,6 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
 .pin-note { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0.5rem 0.5rem 1rem; border-radius: 1rem; background: var(--gelb-hell); box-shadow: inset 0 0 0 1px var(--gelb-rand); font-size: 0.9rem; }
 .chip { appearance: none; border: 0; background: var(--weiss); color: var(--tinte); font-size: 0.875rem; font-weight: 600; min-height: 2.5rem; padding: 0 0.9rem; border-radius: 999px; white-space: nowrap; box-shadow: inset 0 0 0 1px var(--tinte-08); }
 
-/* Desktop editor inside the card */
-.desk { margin-top: 1.25rem; display: grid; gap: 0.6rem; }
-.desk label { font-weight: 600; font-size: 0.95rem; }
-.desk-field { position: relative; }
-.desk-field input {
-  width: 100%; padding: 0.55rem 3.25rem 0.55rem 1rem; border-radius: 1rem;
-  border: 2px solid var(--tinte-15); background: var(--weiss); color: var(--tinte);
-  font-family: var(--font-display); font-weight: 700; font-size: 2.4rem; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
-}
-.desk-field input::placeholder { color: var(--tinte-15); }
-.desk-field input:focus { outline: none; border-color: var(--blau); box-shadow: 0 0 0 4px var(--blau-ring); }
-.desk-field .suffix { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; color: var(--tinte-55); pointer-events: none; }
-.desk-row { display: flex; gap: 0.5rem; }
 .hint { font-size: 0.9rem; color: var(--tinte-70); min-height: 1.35em; }
 .hint.warn { color: var(--ziegel); font-weight: 600; }
 
@@ -168,7 +155,6 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
 .btn-outline { background: var(--weiss); color: var(--tinte); box-shadow: inset 0 0 0 1px var(--tinte-15); }
 .btn-outline:hover { background: var(--blau-hell); }
 .btn-outline.danger { color: var(--ziegel); }
-.desk-row .btn { flex: 1; }
 
 /* Preview controls */
 .preview-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5rem 0.75rem; padding-block: 0.25rem 1.25rem; font-size: 0.8rem; color: var(--tinte-55); }
@@ -217,6 +203,25 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
 .amount .u { font-size: 0.6em; margin-left: 0.15em; }
 .amount-hint { min-height: 1.5em; font-size: 0.95rem; color: var(--weiss-75); }
 .amount-hint.warn { color: var(--gelb); font-weight: 600; }
+
+/* Computers: the same sheet without keypad. The amount is a text field; a blinking bar
+   after the number shows that you can type (the cursor always stays at the end). */
+.amount-field { display: inline-grid; }
+.amount-field > * { grid-area: 1 / 1; font: inherit; letter-spacing: inherit; }
+.amount-mirror { visibility: hidden; white-space: pre; }
+/* size="1" keeps the field from widening the number; it takes the width of the mirror text. */
+.amount-field input {
+  width: 100%; min-width: 0.5em; margin: 0; padding: 0; border: 0; outline: none;
+  background: transparent; color: inherit; text-align: right; caret-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.amount-field input::placeholder { color: var(--weiss-25); opacity: 1; }
+.caret {
+  display: inline-block; width: 0.07em; height: 0.82em; margin-left: 0.05em; vertical-align: -0.04em;
+  border-radius: 0.04em; background: var(--gelb); animation: caret-blink 1.1s steps(1) infinite;
+}
+.amount-desk:not(.focused) .caret { visibility: hidden; }
+@keyframes caret-blink { 50% { opacity: 0; } }
 
 .keypad { flex: 0 1 19rem; min-height: 11.5rem; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr); gap: 0.25rem; }
 .key {
@@ -288,7 +293,7 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
 @keyframes sheet-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .sheet, .toast { animation: none; }
+  .sheet, .toast, .caret { animation: none; }
   .fill, .fill-change, .big-btn, .key, .collapse-head svg.i { transition: none; }
 }
 </style>
@@ -337,17 +342,6 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
         <button type="button" class="big-btn btn-zeit" data-open="zeit" lang="de">Stunden&shy;beitrag</button>
       </div>
 
-      <form class="desk" id="desk" hidden novalidate>
-        <label for="desk-input" id="desk-label">Dein Beitrag in Euro</label>
-        <div class="desk-field">
-          <input id="desk-input" inputmode="decimal" autocomplete="off" spellcheck="false">
-          <span class="suffix" id="desk-suffix">€</span>
-        </div>
-        <div class="desk-row">
-          <button type="submit" class="btn btn-primary" id="desk-save">Speichern</button>
-          <button type="button" class="btn btn-outline" id="desk-cancel">Abbrechen</button>
-        </div>
-      </form>
     </section>
 
     <div class="pin-note">
@@ -461,6 +455,9 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
 
     <div class="sheet-amount">
       <p class="amount empty" id="amount" aria-live="polite"><span id="amount-text">0</span><span class="u" id="amount-unit">€</span></p>
+      <p class="amount amount-desk" id="amount-desk" hidden>
+        <label class="amount-field"><span class="amount-mirror" id="amount-mirror" aria-hidden="true">0</span><input id="amount-input" size="1" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="0" aria-label="Dein Beitrag in Euro"></label><span class="caret" aria-hidden="true"></span><span class="u" id="amount-desk-unit">€</span>
+      </p>
     </div>
 
     <div class="keypad" id="keypad">
@@ -510,7 +507,7 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
     ownHours: 11.5,
     mode: { member: store.get('mode') === 'brutto' ? 'brutto' : 'netto', admin: 'netto' },
     input: window.matchMedia('(pointer: coarse)').matches ? 'touch' : 'desk',
-    editing: null // { kind, raw, where: 'sheet' | 'desk' }
+    editing: null // { kind, raw, initial, where: 'keypad' | 'field' }
   };
 
   const NAMES = ['Anna Becker', 'Ben Hoffmann', 'Carla Neumann', 'Deniz Aydın', 'Emil Fischer', 'Fatma Yılmaz', 'Greta Lange', 'Hannah Weber', 'Ida Wagner', 'Jonas Krüger', 'Jörg Müller-Lüdenscheidt', 'Katharina Wolf', 'Lena Schneider', 'Luis Hartmann', 'Mara Schulz', 'Maximilian von Hohenberg-Schwarzenfels', 'Nils Berger', 'Ole Hansen', 'Paul', 'Rosa Zimmermann', 'Sophie Braun', 'Steffen', 'Tim Vogel', 'Zoë Kraus'];
@@ -662,34 +659,29 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
     return v.toFixed(KINDS[kind].maxDec).replace('.', ',');
   }
 
+  // Phones and tablets get the keypad, computers a text field on the same page.
   function openEditor(kind) {
     const raw = currentRaw(kind);
-    state.editing = { kind, raw, initial: raw, where: state.input === 'touch' ? 'sheet' : 'desk' };
-    if (state.editing.where === 'sheet') {
-      $('sheet').hidden = false;
-      document.documentElement.style.overflow = 'hidden';
-      $('sheet-close').focus();
-    } else {
-      $('actions').hidden = true;
-      $('desk').hidden = false;
-      $('desk-input').value = raw;
-      $('desk-input').focus();
-      $('desk-input').setSelectionRange(raw.length, raw.length);
-    }
+    state.editing = { kind, raw, initial: raw, where: state.input === 'touch' ? 'keypad' : 'field' };
+    $('sheet').hidden = false;
+    document.documentElement.style.overflow = 'hidden';
     renderEditor();
+    if (state.editing.where === 'field') focusField();
+    else $('sheet-close').focus();
+  }
+
+  function focusField() {
+    const input = $('amount-input');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 
   function closeEditor() {
     if (!state.editing) return;
-    const { where, kind } = state.editing;
+    const { kind } = state.editing;
     state.editing = null;
-    if (where === 'sheet') {
-      $('sheet').hidden = true;
-      document.documentElement.style.overflow = '';
-    } else {
-      $('desk').hidden = true;
-      $('actions').hidden = false;
-    }
+    $('sheet').hidden = true;
+    document.documentElement.style.overflow = '';
     const opener = document.querySelector(`[data-open="${kind}"]`);
     if (opener) opener.focus({ preventScroll: true });
   }
@@ -700,13 +692,27 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
     const result = evaluate(kind, raw);
     const mode = state.mode.member;
 
-    if (where === 'sheet') {
+    {
+      const field = where === 'field';
       $('sheet-title').textContent = k.title;
+      $('keypad').hidden = field;
+      $('amount').hidden = field;
+      $('amount-desk').hidden = !field;
       const text = raw === '' ? '0' : formatRaw(raw);
-      $('amount-text').textContent = text;
-      $('amount-unit').textContent = k.unit;
-      const amount = $('amount');
-      amount.classList.toggle('empty', raw === '');
+      if (field) {
+        const input = $('amount-input');
+        const value = raw === '' ? '' : formatRaw(raw);
+        if (input.value !== value) input.value = value;
+        $('amount-mirror').textContent = value || '0';
+        $('amount-desk-unit').textContent = k.unit;
+        input.setAttribute('aria-label', kind === 'geld' ? 'Dein Beitrag in Euro' : 'Deine Stunden pro Monat');
+        if (document.activeElement === input) input.setSelectionRange(value.length, value.length);
+      } else {
+        $('amount-text').textContent = text;
+        $('amount-unit').textContent = k.unit;
+        $('amount').classList.toggle('empty', raw === '');
+      }
+      const amount = field ? $('amount-desk') : $('amount');
       amount.classList.toggle('len-m', text.length >= 7 && text.length < 9);
       amount.classList.toggle('len-l', text.length >= 9);
       $('sheet-save').disabled = !result.ok;
@@ -733,11 +739,6 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
         $('sum-of').textContent = 'pro Monat';
         $('sum-track').hidden = true;
       }
-    } else {
-      $('desk-label').textContent = kind === 'geld' ? 'Dein Beitrag in Euro' : 'Deine Stunden';
-      $('desk-suffix').textContent = k.unit;
-      $('desk-input').placeholder = kind === 'geld' ? money(shown(state.own, mode)) : hours(state.ownHours);
-      $('desk-save').disabled = !result.ok;
     }
   }
 
@@ -759,7 +760,7 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
   }
 
   function press(key) {
-    if (!state.editing || state.editing.where !== 'sheet') return;
+    if (!state.editing) return;
     const next = pressKey(state.editing.raw, key, state.editing.kind);
     // Hours above the maximum cannot be typed at all, so no warning is needed.
     if (state.editing.kind === 'zeit' && Number(next.replace(',', '.')) > MAX_HOURS) return;
@@ -807,7 +808,7 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
       window.scrollTo(0, 0);
       return undefined;
     }
-    if (t.id === 'sheet-close' || t.id === 'desk-cancel') return closeEditor();
+    if (t.id === 'sheet-close') return closeEditor();
     if (t.id === 'sheet-save') return saveEditor();
     if (t.id === 'members-toggle') {
       const open = t.getAttribute('aria-expanded') !== 'true';
@@ -830,22 +831,47 @@ svg.i { width: 1.25rem; height: 1.25rem; flex: none; fill: none; stroke: current
   document.addEventListener('keydown', (e) => {
     if (!state.editing) return;
     if (e.key === 'Escape') { e.preventDefault(); closeEditor(); return; }
-    if (state.editing.where !== 'sheet') return;
+    if (state.editing.where !== 'keypad') return;
     if (/^\d$/.test(e.key)) { press(e.key); flash(e.key); e.preventDefault(); }
     else if (e.key === ',' || e.key === '.') { press(','); flash(','); e.preventDefault(); }
     else if (e.key === 'Backspace') { press('back'); flash('back'); e.preventDefault(); }
     else if (e.key === 'Enter') { e.preventDefault(); saveEditor(); }
   });
 
-  $('desk-input').addEventListener('input', (e) => {
-    const clean = sanitize(e.target.value, state.editing.kind);
-    const over = state.editing.kind === 'zeit' && Number(clean.replace(',', '.')) > MAX_HOURS;
-    const next = over ? state.editing.raw : clean;
-    if (next !== e.target.value) e.target.value = next;
-    state.editing.raw = next;
+  // The text field on computers: keys go through the same rules as the keypad.
+  const field = $('amount-input');
+  const CURSOR_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+  const takeTyped = (text) => {
+    const next = sanitize(text, state.editing.kind);
+    if (!(state.editing.kind === 'zeit' && Number(next.replace(',', '.')) > MAX_HOURS)) state.editing.raw = next;
     renderEditor();
+  };
+
+  field.addEventListener('keydown', (e) => {
+    if (!state.editing || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^\d$/.test(e.key)) press(e.key);
+    else if (e.key === ',' || e.key === '.') press(',');
+    else if (e.key === 'Backspace') press('back');
+    else if (e.key === 'Enter') saveEditor();
+    else if (e.key === 'Escape') closeEditor();
+    else if (e.key.length !== 1 && !CURSOR_KEYS.includes(e.key)) return; // Tab and the like
+    e.preventDefault(); // other characters and cursor moves: the cursor stays at the end
+    e.stopPropagation();
   });
-  $('desk').addEventListener('submit', (e) => { e.preventDefault(); saveEditor(); });
+  field.addEventListener('paste', (e) => {
+    e.preventDefault();
+    takeTyped((e.clipboardData && e.clipboardData.getData('text')) || '');
+  });
+  // Anything else that changes the field (dictation, autofill): keep what is valid.
+  field.addEventListener('input', () => takeTyped(field.value.replace(/\./g, '')));
+  field.addEventListener('focus', () => $('amount-desk').classList.add('focused'));
+  field.addEventListener('blur', () => $('amount-desk').classList.remove('focused'));
+  // A click anywhere on the page (except on a button) puts the cursor back into the field.
+  $('sheet').addEventListener('mousedown', (e) => {
+    if (!state.editing || state.editing.where !== 'field' || e.target.closest('button') || e.target === field) return;
+    e.preventDefault();
+    focusField();
+  });
 
   $('member-search').addEventListener('input', renderAdmin);
   $('add-form').addEventListener('submit', (e) => { e.preventDefault(); toast('Im Entwurf ohne Funktion.', 'info'); });

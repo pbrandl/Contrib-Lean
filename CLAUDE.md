@@ -230,13 +230,12 @@ The notices from `useNotice`/`Notice` in `ui.js` change:
 
 ### Desktop (fine pointer)
 
-Not designed in detail yet; this is the next step. So far the prototype only replaces the buttons with an input field:
-
-A click on one of the buttons replaces the two buttons in the card with:
-- a large input field that gets the focus and starts with the current value, cursor at the end,
-- "Speichern" and "Abbrechen".
-
-Enter saves, Esc cancels. A period is accepted as decimal separator. As on the keypad there are no hint lines, and hours above 744 cannot be typed.
+The same full-screen sheet as on touch devices (title, totals strip with preview bar, "Speichern" bottom right), without the keypad. In place of the keypad's amount display the amount is a text field:
+- It gets the focus when the sheet opens and starts with the current value, centered like the keypad's amount.
+- A blinking yellow bar right after the number shows that you can type. The browser's own cursor is hidden, and the cursor always stays at the end.
+- Digits, comma or period (both mean the decimal comma) and Backspace follow the keypad's rules (`pressKey`): the same limits and the thousands separator while typing. Arrow keys do nothing, other characters are ignored, and paste keeps the valid part.
+- Enter saves, Esc closes. A click anywhere on the sheet puts the cursor back into the field.
+- There are no hint lines, and hours above 744 cannot be typed.
 
 ### Admin page
 
