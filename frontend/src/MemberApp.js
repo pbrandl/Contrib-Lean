@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, Search, X } from 'lucide-react';
-import { api, byName, fold, formatHours, formatNumber, memberSession, round2, useNotice, usePolling } from './lib';
+import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, rememberTrust, round2, useNotice, usePolling } from './lib';
 import { Band, Callout, LoadingPage, Logo, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -97,7 +97,7 @@ function FrontPage({ onLogin }) {
   };
 
   const login = async (pin) => {
-    const session = await api('/login', { method: 'POST', body: { userId: selected.id, pin } });
+    const session = await loginWithPin(selected.id, pin);
     if (window.history.state && window.history.state.pinFor) window.history.replaceState(null, '');
     onLogin(session);
   };
@@ -250,9 +250,8 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
     return () => window.removeEventListener('popstate', onPop);
   }, [onLogout]);
 
-  // Responses can overtake each other; `rev` grows with every change on the server.
   const apply = useCallback((next) => {
-    setMe(prev => (!prev || next.rev >= prev.rev ? next : prev));
+    setMe(prev => (isNewer(next, prev) ? next : prev));
   }, []);
 
   const load = useCallback(async () => {
@@ -293,7 +292,8 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
         if (err.status === 401) {
           onLogout(err.message);
         } else {
-          showNotice('error', `Nicht gespeichert. ${err.message}`);
+          // Without an answer the step may still have been saved: show the server's state.
+          showNotice('error', err.status === 0 ? `${err.message} Dein Gebot wird neu geladen, bitte prüfe es.` : `Nicht gespeichert. ${err.message}`);
           load();
         }
         return;
@@ -324,7 +324,10 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
       showNotice('ok', 'Gespeichert: dein Gebot ist zurückgesetzt.');
     } catch (err) {
       if (err.status === 401) onLogout(err.message);
-      else showNotice('error', `Nicht zurückgesetzt. ${err.message}`);
+      else {
+        showNotice('error', err.status === 0 ? `${err.message} Dein Gebot wird neu geladen, bitte prüfe es.` : `Nicht zurückgesetzt. ${err.message}`);
+        load();
+      }
     }
     setResetting(false);
   };
@@ -344,7 +347,8 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
 
   const changePin = async (pin) => {
     try {
-      const data = await api('/me/pin', { method: 'PUT', token, body: { pin } });
+      const data = await api('/me/pin', { method: 'PUT', token, body: { pin, device: deviceId() || undefined } });
+      rememberTrust(data.user.id, data.trust);
       onSession(data.session);
       apply(data);
       setPinOpen(false);

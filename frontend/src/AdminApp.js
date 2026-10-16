@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
-import { adminSession, api, byName, download, fold, formatEuro, parseAmount, round2, today, useNotice, usePolling } from './lib';
+import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
 import { Band, Callout, LoadingPage, Logo, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
@@ -43,7 +43,7 @@ export default function AdminApp() {
 
 function AdminLogin({ onLogin }) {
   const login = async (pin) => {
-    onLogin(await api('/login', { method: 'POST', body: { userId: 'admin', pin } }));
+    onLogin(await loginWithPin('admin', pin));
   };
 
   return (
@@ -68,9 +68,8 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [adminPinOpen, setAdminPinOpen] = useState(false);
 
-  // Responses can overtake each other; `rev` grows with every change on the server.
   const apply = useCallback((next) => {
-    setData(prev => (!prev || next.rev >= prev.rev ? next : prev));
+    setData(prev => (isNewer(next, prev) ? next : prev));
   }, []);
 
   // Admin request: applies the returned state; 401 logs out, other errors go to the caller.
@@ -102,7 +101,8 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   if (!data) return loadFailed ? <OfflinePage onRetry={load} /> : <LoadingPage />;
 
   const changeAdminPin = async (pin) => {
-    const result = await call('/admin/users/admin/pin', { method: 'PUT', body: { pin } });
+    const result = await call('/admin/users/admin/pin', { method: 'PUT', body: { pin, device: deviceId() || undefined } });
+    rememberTrust('admin', result.trust);
     onSession(result.session);
     setAdminPinOpen(false);
     showNotice('ok', 'Die neue Admin-PIN ist gespeichert.');
@@ -150,6 +150,7 @@ function MembersSection({ users, call, showNotice }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [created, setCreated] = useState(null);
 
   const add = async (e) => {
     e.preventDefault();
@@ -159,10 +160,11 @@ function MembersSection({ users, call, showNotice }) {
     }
     setAdding(true);
     setAddError('');
+    setCreated(null);
     try {
       const result = await call('/admin/users', { method: 'POST', body: { name: name.trim() } });
       setName('');
-      showNotice('ok', `${result.added.name} ist eingetragen. Start-PIN: 1234`);
+      setCreated({ name: result.added.name, pin: result.added.startPin });
     } catch (err) {
       if (err.status !== 401) setAddError(err.message);
     }
@@ -219,9 +221,20 @@ function MembersSection({ users, call, showNotice }) {
         {addError ? (
           <p className="mt-1 font-semibold text-ziegel" role="alert">{addError}</p>
         ) : (
-          <p className="mt-1 text-tinte/70">Neue Mitglieder melden sich mit der Start-PIN 1234 an.</p>
+          <p className="mt-1 text-tinte/70">Neue Mitglieder bekommen eine zufällige Start-PIN. Sie wird nach dem Eintragen angezeigt.</p>
         )}
       </form>
+
+      {created && (
+        <div className="mt-4 space-y-2 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
+          <p className="break-words">{created.name} ist eingetragen. Start-PIN:</p>
+          <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{created.pin}</p>
+          <p className="text-tinte/75">
+            Gib die PIN direkt weiter. Sie wird nur jetzt angezeigt. Später kannst du mit „PIN setzen“ eine neue vergeben.
+          </p>
+          <button type="button" className="btn-rand" onClick={() => setCreated(null)}>Fertig</button>
+        </div>
+      )}
 
       {users.length > 0 && (
         <div className="relative mt-6">

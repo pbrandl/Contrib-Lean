@@ -2,10 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
+// A request that gets no answer within this time fails, so a page never hangs.
+export const TIMEOUT_MS = 15000;
+
+// status 0: no answer. `timeout`: the request may still have reached the server.
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, { retryAfter = 0, timeout = false } = {}) {
     super(message);
     this.status = status;
+    this.retryAfter = retryAfter;
+    this.timeout = timeout;
   }
 }
 
@@ -13,29 +19,47 @@ export async function api(path, { method = 'GET', body, token } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
+  const device = deviceId();
+  if (device) headers['X-Device'] = device;
 
-  let response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      cache: 'no-store'
-    });
-  } catch {
-    throw new ApiError(0, 'Keine Verbindung zum Server. Prüfe dein Internet und versuche es noch einmal.');
-  }
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timedOut = false;
+  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, TIMEOUT_MS) : null;
 
-  let data = null;
   try {
-    data = await response.json();
-  } catch {
-    // empty or non-JSON body
+    let response;
+    try {
+      response = await fetch(`${API_URL}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+        signal: controller ? controller.signal : undefined
+      });
+    } catch {
+      if (timedOut) {
+        throw new ApiError(0, 'Der Server antwortet gerade nicht. Versuche es gleich noch einmal.', { timeout: true });
+      }
+      throw new ApiError(0, 'Keine Verbindung zum Server. Prüfe dein Internet und versuche es noch einmal.');
+    }
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      // empty or non-JSON body (or the answer stopped halfway)
+    }
+    if (!response.ok) {
+      const retryAfter = Number(response.headers && response.headers.get && response.headers.get('Retry-After')) || 0;
+      throw new ApiError(response.status, (data && data.error) || `Serverfehler (${response.status}). Bitte versuche es noch einmal.`, { retryAfter });
+    }
+    if (timedOut) {
+      throw new ApiError(0, 'Der Server antwortet gerade nicht. Versuche es gleich noch einmal.', { timeout: true });
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-  if (!response.ok) {
-    throw new ApiError(response.status, (data && data.error) || `Serverfehler (${response.status}). Bitte versuche es noch einmal.`);
-  }
-  return data;
 }
 
 // Sessions: members stay logged in on their own phone (localStorage),
@@ -69,6 +93,69 @@ function stored(getStore, key) {
 
 export const memberSession = stored(() => window.localStorage, 'franzwerk.member');
 export const adminSession = stored(() => window.sessionStorage, 'franzwerk.admin');
+
+// Device id: random per browser and sent with every request. Wrong PINs then lock only
+// this device (not the whole WLAN), and the audit log can tell devices apart.
+// Same format as DEVICE_PATTERN in backend/server.js: 22 base64url characters.
+const DEVICE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const deviceStore = stored(() => window.localStorage, 'franzwerk.device');
+let currentDevice;
+
+function randomDeviceId() {
+  const cryptoApi = typeof window !== 'undefined' ? window.crypto : null;
+  if (!cryptoApi || !cryptoApi.getRandomValues) return null; // never a weak id
+  const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function deviceId() {
+  if (currentDevice !== undefined) return currentDevice;
+  const saved = deviceStore.get();
+  if (typeof saved === 'string' && DEVICE_PATTERN.test(saved)) {
+    currentDevice = saved;
+  } else {
+    currentDevice = randomDeviceId();
+    if (currentDevice) deviceStore.set(currentDevice);
+  }
+  return currentDevice;
+}
+
+// After a right PIN the server returns a "trusted device" credential for this account.
+// With it, this device can still log in while somebody else is guessing PINs for the
+// account. It is useless without the PIN, so it stays after logging out. Up to 10 accounts
+// per device (shared phones).
+const trustStore = stored(() => window.localStorage, 'franzwerk.trust');
+const MAX_TRUSTED_ACCOUNTS = 10;
+
+const trustList = () => {
+  const list = trustStore.get();
+  return Array.isArray(list) ? list.filter(e => e && typeof e.uid === 'string' && typeof e.trust === 'string') : [];
+};
+
+export function trustFor(userId) {
+  const entry = trustList().find(e => e.uid === userId);
+  return entry ? entry.trust : undefined;
+}
+
+export function rememberTrust(userId, trust) {
+  if (typeof trust !== 'string' || !trust) return;
+  const others = trustList().filter(e => e.uid !== userId);
+  trustStore.set([{ uid: userId, trust }, ...others].slice(0, MAX_TRUSTED_ACCOUNTS));
+}
+
+// Login with device id and credential; returns the session (without the credential).
+export async function loginWithPin(userId, pin) {
+  const { trust, ...session } = await api('/login', {
+    method: 'POST',
+    body: { userId, pin, device: deviceId() || undefined, trust: trustFor(userId) }
+  });
+  rememberTrust(userId, trust);
+  return session;
+}
+
+// Responses can overtake each other; `rev` grows with every change on the server.
+// `boot` changes with every server start, so a restored backup (lower rev) is accepted.
+export const isNewer = (next, prev) => !prev || next.boot !== prev.boot || next.rev >= prev.rev;
 
 // Formatting
 
