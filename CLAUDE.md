@@ -179,7 +179,9 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
   - Progress bar.
   - It must fit down to 320 px: numbers wrap to a new line instead of being cut off.
   - Generous spacing between the top bar, the numbers, the bar and the line below it, so it does not look crowded. The values are in the prototype CSS (`.topbar`, `.stats`, `.track`, `.meta`, `.band-inner`).
-  - "Abmelden" is plain grey text, without padding or highlight, in the same font size as the name next to it, so both sit on one line.
+  - Top bar: wordmark/logo left, the member's name centered, "Abmelden" right. "Abmelden" is plain text without padding or highlight, in the same font size as the name.
+  - "Abmelden" and the total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
+  - Outside the page (overscroll, the phone's safe areas) only the top is blue; below the content the light page colour continues, never a blue strip at the bottom.
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
   - Heading left, netto/brutto toggle right on the same line.
   - Below it: own bid (€) left and own hours (h) right, in the same font size and without labels.
@@ -232,7 +234,7 @@ The notices from `useNotice`/`Notice` in `ui.js` change:
 
 The same full-screen sheet as on touch devices (title, totals strip with preview bar, "Speichern" bottom right), without the keypad. In place of the keypad's amount display the amount is a text field:
 - It gets the focus when the sheet opens and starts with the current value, centered like the keypad's amount.
-- A blinking yellow bar right after the number shows that you can type: square ends, exactly as high as the digits. The browser's own cursor is hidden, and the cursor always stays at the end.
+- A blinking yellow bar right after the number shows that you can type: square ends, from the top of the digits to a little below the baseline. The browser's own cursor is hidden, and the cursor always stays at the end.
 - Digits, comma or period (both mean the decimal comma) and Backspace follow the keypad's rules (`pressKey`): the same limits and the thousands separator while typing. Arrow keys do nothing, other characters are ignored, and paste keeps the valid part.
 - Enter saves, Esc closes. A click anywhere on the sheet puts the cursor back into the field.
 - There are no hint lines, and hours above 744 cannot be typed.
