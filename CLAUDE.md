@@ -182,7 +182,7 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
   - Generous spacing between the top bar, the numbers, the bar and the line below it, so it does not look crowded. The values are in the prototype CSS (`.topbar`, `.stats`, `.track`, `.meta`, `.band-inner`).
   - Top bar: wordmark/logo left, the member's name centered, "Abmelden" right. "Abmelden" is plain text without padding or highlight, in the same font size as the name.
   - "Abmelden" and the total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
-  - Outside the page (overscroll, the phone's safe areas) only the top is blue; below the content the light page colour continues, never a blue strip at the bottom.
+  - Outside the page (overscroll, the phone's safe areas) the light page colour continues below the content, never a blue strip at the bottom. Android and desktop browsers show blue above the page; iOS paints both edges in one colour (the body's), so there the top is light too. That is accepted: a blue body would bring back the blue strip at the bottom.
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
   - Heading left, netto/brutto toggle right on the same line.
   - Below it: own bid (€) left and own hours (h) right, in the same font size and without labels.
@@ -218,6 +218,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
   - The rows shrink on short screens, but not below 44 px.
 - **Bottom right:** "Speichern" (yellow), disabled until the value is valid and differs from the current one.
 - **Physical keys** also work: digits, comma or period, Backspace, Enter saves, Esc closes.
+- **Short phones in portrait** (less than 540 px high, e.g. 320 pt iPhones in Safari with about 460 px): less spacing, a smaller amount and button, so it fits with key rows of at least 48 px. Check fit at browser heights (320×460, 375×553), not screen heights.
 - **Phones in landscape** (less than 540 px high): the amount is on the left, the keypad and "Speichern" on the right, so it still fits. Should a screen be too short even for that, the sheet scrolls.
 
 ### Banners (whole app: member page, front page and admin)

@@ -6,8 +6,9 @@
 @tailwind utilities;
 
 @layer base {
-  /* Outside the page (rubber band, safe areas) the top shows the header colour and the
-     bottom the light page colour, never a blue strip below the content. */
+  /* Outside the page (rubber band, safe areas) the light page colour shows, never a blue
+     strip below the content. Android and desktop browsers paint the top half blue; iOS uses
+     one colour for both edges (the body's), so there the top shows the light colour too. */
   html {
     background: theme('colors.papier') linear-gradient(theme('colors.werkblau'), theme('colors.werkblau')) top / 100% 50vh no-repeat;
     font-size: 106.25%;
@@ -253,6 +254,14 @@
     overscroll-behavior: contain;
   }
 
+  .sheet-head {
+    min-height: 3rem;
+  }
+
+  .sheet-foot {
+    padding-top: 0.75rem;
+  }
+
   /* Phones in landscape: the amount on the left, the keypad and "Speichern" on the right. */
   @media (orientation: landscape) and (max-height: 540px) {
     .sheet-inner.with-keypad {
@@ -468,6 +477,43 @@
     background: rgb(255 255 255 / 0.15);
     color: rgb(255 255 255 / 0.5);
     pointer-events: none;
+  }
+
+  /* After the sheet rules above, so it overrides them. Short phones in portrait (320 pt iPhones in Safari leave about 460 px): less air,
+     a smaller amount and button, so the keypad keeps rows of at least 48 px. */
+  @media (orientation: portrait) and (max-height: 540px) {
+    .sheet-inner {
+      padding-top: 0.2rem;
+      padding-bottom: 0.6rem;
+    }
+
+    .sheet-head {
+      min-height: 2.6rem;
+    }
+
+    .sheet-sum {
+      margin-top: 0.2rem;
+      padding: 0.5rem 1rem;
+    }
+
+    .sheet-amount {
+      min-height: 4rem;
+      padding-block: 0.25rem;
+    }
+
+    .amount,
+    .amount.len-m,
+    .amount.len-l {
+      font-size: clamp(2.3rem, 13vw, 3.25rem);
+    }
+
+    .sheet-foot {
+      padding-top: 0.5rem;
+    }
+
+    .save {
+      min-height: 3rem;
+    }
   }
 
   /* Banner at the top of the screen, below the safe area. */

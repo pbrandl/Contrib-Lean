@@ -8,8 +8,7 @@ export function Logo({ className }) {
 }
 
 // Dark blue band at the top of every page; the yellow logo needs the dark ground.
-// The glow fades out before the top edge, so the band meets the blue top of the page
-// canvas seamlessly when the page is pulled down past the top.
+// The glow fades out before the top edge, so the band meets the page canvas seamlessly.
 export function Band({ children, className = '' }) {
   return (
     <header className="on-dark relative overflow-hidden bg-werkblau text-white">
