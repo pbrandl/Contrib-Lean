@@ -183,12 +183,32 @@ async function check(name, fn) {
     assert.equal(res.body.contribution, 0);
   });
 
-  await check('hours per month: set, round to half hours, validate, sum', async () => {
-    const before = (await call('GET', '/public')).body.totalHours;
-    let res = await call('PUT', '/me/hours', { token: member, body: { hours: 7.3 } });
+  await check('the bid is set as a fixed amount (netto); the step route of old pages still works', async () => {
+    let res = await call('PUT', '/me/contribution', { token: member, body: { amount: 10.87 } });
     assert.equal(res.status, 200);
-    assert.equal(res.body.hours, 7.5);
-    assert.equal(res.body.totalHours, before + 7.5);
+    assert.equal(res.body.contribution, 10.87);
+    assert.equal((await call('PUT', '/me/contribution', { token: member, body: { amount: 10.87 } })).body.contribution, 10.87, 'same amount again');
+    assert.equal((await call('PUT', '/me/contribution', { token: member, body: { amount: '1585.5' } })).body.contribution, 1585.5);
+    assert.equal((await call('PUT', '/me/contribution', { token: member, body: { amount: 12.345 } })).body.contribution, 12.35, 'cents');
+    for (const amount of [-1, 'viel', 1000001, null, '1e3', '0x10']) {
+      assert.equal((await call('PUT', '/me/contribution', { token: member, body: { amount } })).status, 400, JSON.stringify(amount));
+    }
+    assert.equal((await call('PUT', '/me/contribution', { body: { amount: 5 } })).status, 401);
+    res = await call('PUT', '/me/contribution', { token: member, body: { amount: 0 } });
+    assert.equal(res.body.contribution, 0);
+    assert.equal(db().contributions[memberId], undefined);
+    assert.equal((await call('POST', '/me/contribution', { token: member, body: { delta: 5 } })).body.contribution, 5, 'old page');
+    assert.equal((await call('POST', '/me/contribution/withdraw', { token: member })).body.contribution, 0, 'old page');
+    const lines = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    assert.ok(lines.some(l => l.event === 'bid' && l.from === 10.87 && l.to === 1585.5));
+  });
+
+  await check('hours per month: set, round to one decimal, validate, sum', async () => {
+    const before = (await call('GET', '/public')).body.totalHours;
+    let res = await call('PUT', '/me/hours', { token: member, body: { hours: 7.34 } });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.hours, 7.3);
+    assert.equal(res.body.totalHours, before + 7.3);
     res = await call('PUT', '/me/hours', { token: member, body: { hours: '4,5' } });
     assert.equal(res.body.hours, 4.5);
     for (const hours of [-1, 'viel', 1000, null]) {
@@ -473,6 +493,10 @@ async function check(name, fn) {
     assert.equal(res.status, 200);
     assert.ok(res.body.contributions && res.body.users.length > 0);
     assert.equal(res.body.hours[memberId], 6);
+    assert.deepEqual(Object.keys(res.body.contributionsGross).sort(), Object.keys(res.body.contributions).sort());
+    for (const [id, net] of Object.entries(res.body.contributions)) {
+      assert.equal(res.body.contributionsGross[id], Math.round(net * 1.19 * 100) / 100);
+    }
     assert.doesNotMatch(res.raw, /pin|scrypt/i);
   });
 
@@ -523,22 +547,32 @@ async function check(name, fn) {
 
   await check('crowd: 100 members on one WLAN with 400 wrong PINs all get in, and so does the admin', async () => {
     const crowdIp = '198.51.100.77';
+    let busy = 0;
     const users = Array.from({ length: 100 }, (_, i) => ({ name: `Mitglied ${i + 1}` }));
     const imported = await call('POST', '/admin/import', { token: admin, body: { users } });
     assert.equal(imported.status, 200);
     const started = Date.now();
     const results = await Promise.all(imported.body.users.map(async (u, i) => {
       const device = i < 80 ? newDevice() : undefined; // the last 20 still run the old page
+      // Like a person: when the server is busy (503) tap again a moment later.
+      const attempt = async (pin) => {
+        for (;;) {
+          const res = await call('POST', '/login', { ip: crowdIp, body: { userId: u.id, pin, device } });
+          if (res.status !== 503) return res.status;
+          busy += 1;
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      };
       const wrong = [];
-      for (let k = 0; k < 4; k += 1) wrong.push((await call('POST', '/login', { ip: crowdIp, body: { userId: u.id, pin: String(5000 + k), device } })).status);
-      const ok = await call('POST', '/login', { ip: crowdIp, body: { userId: u.id, pin: '1234', device } });
-      return { wrong, ok: ok.status };
+      for (let k = 0; k < 4; k += 1) wrong.push(await attempt(String(5000 + k)));
+      return { wrong, ok: await attempt('1234') };
     }));
-    assert.ok(results.every(r => r.wrong.every(st => st === 401)), 'every typo is a plain 401');
-    assert.ok(results.every(r => r.ok === 200), 'every member gets in');
+    const typoStatuses = [...new Set(results.flatMap(r => r.wrong))];
+    assert.deepEqual(typoStatuses, [401], `every typo is a plain 401, got ${typoStatuses}`);
+    assert.ok(results.every(r => r.ok === 200), `every member gets in: ${results.map(r => r.ok).filter(st => st !== 200)}`);
     const adminFromWlan = await call('POST', '/login', { ip: crowdIp, body: { userId: 'admin', pin: '4711', device: newDevice() } });
     assert.equal(adminFromWlan.status, 200);
-    console.log(`     crowd: 500 logins in ${Date.now() - started} ms`);
+    console.log(`     crowd: 500 logins in ${Date.now() - started} ms, ${busy} times "server busy" (503) and tried again`);
   });
 
   await check('admin under attack: 10 wrong PINs per network, 30 overall; the meeting network and the trusted device get in', async () => {

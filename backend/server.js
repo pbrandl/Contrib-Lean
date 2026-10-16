@@ -18,7 +18,9 @@ const PIN_PATTERN = /^\d{4,6}$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const MAX_AMOUNT = 1000000;
 const MAX_HOURS = 744; // hours in a 31-day month
-const MAX_STEP = 10000;
+const MAX_STEP = 10000; // only for pages from before the new bid entry
+// Bids are netto; brutto (with 19 % VAT) is shown on request and in the export.
+const VAT_RATE = 1.19;
 const MAX_NAME_LENGTH = 60;
 const MEMBER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -142,13 +144,13 @@ function toNumber(value, comma = false) {
   return (comma ? /^\d+([.,]\d+)?$/ : /^\d+(\.\d+)?$/).test(s) ? Number(s.replace(',', '.')) : NaN;
 }
 
-// Hours per month a member can contribute; half hours are allowed.
+// Hours per month a member can contribute, with one decimal.
 function requireHours(value, label = 'Die Stunden') {
   const n = toNumber(value, true);
   if (!Number.isFinite(n) || n < 0 || n > MAX_HOURS) {
     throw new HttpError(400, `${label} müssen zwischen 0 und ${MAX_HOURS} liegen.`);
   }
-  return Math.round(n * 2) / 2;
+  return Math.round(n * 10) / 10;
 }
 
 function requireAmount(value, label) {
@@ -758,6 +760,22 @@ api.get('/me', memberOnly, handle(async (req, res) => {
   res.json(memberView(req.data, req.user));
 }));
 
+// The member sets the bid as a fixed amount (netto) with the keypad or the text field.
+// Setting the same amount twice changes nothing, so a page may simply send it again.
+api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
+  const amount = requireAmount(req.body && req.body.amount, 'Der Beitrag');
+  const { data, result } = await mutate((data, log) => {
+    const user = findUserOrLogout(data, req.user.id);
+    const from = data.contributions[user.id] || 0;
+    setContribution(data, user.id, amount);
+    log('bid', { userId: user.id, name: user.name, from, to: amount, ...requestInfo(req) });
+    return user;
+  });
+  res.json(memberView(data, result));
+}));
+
+// Pages from before the new bid entry (still open on phones after an update) count the
+// bid up in steps and withdraw it with an extra route. Kept so they keep working.
 // The server adds the step itself, so fast or parallel clicks are never lost.
 api.post('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
   const delta = req.body && req.body.delta;
@@ -911,6 +929,7 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
   res.json({
     users: data.users.filter(u => !isAdminId(u.id)).map(u => ({ id: u.id, name: u.name })),
     contributions: data.contributions,
+    contributionsGross: Object.fromEntries(Object.entries(data.contributions).map(([id, net]) => [id, round2(net * VAT_RATE)])),
     hours: data.hours,
     targetAmount: data.targetAmount,
     exportDate: new Date().toISOString()
