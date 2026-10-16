@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
-import { countBids, formatHours, formatWhole, inMode, isPin } from './lib';
+import { countBids, formatHours, formatWhole, inMode, isPin, toGross } from './lib';
 
 export function Logo({ className }) {
   return <img src={logo} alt="FRANZ!werk Tübingen" width="700" height="600" className={className} />;
@@ -41,7 +41,8 @@ export function ModeToggle({ mode, onToggle }) {
 
 // Total raised against the need, and the hours per month everybody offers. The euros are
 // shown whole, in the page's netto/brutto mode; `note` follows the Bedarf (" netto").
-export function Progress({ total, target, count, hours = 0, mode = 'netto', note = '' }) {
+// `totalGross`: the brutto total from the server, with bids typed brutto as typed.
+export function Progress({ total, totalGross, target, count, hours = 0, mode = 'netto', note = '' }) {
   const ratio = target > 0 ? total / target : 0;
   const width = Math.min(100, ratio * 100);
   const percent = Math.floor(ratio * 100);
@@ -49,7 +50,7 @@ export function Progress({ total, target, count, hours = 0, mode = 'netto', note
     <div>
       <div className="stats">
         <div>
-          <p className="stat-big"><span>{formatWhole(inMode(total, mode))}</span><span className="unit">€</span></p>
+          <p className="stat-big"><span>{formatWhole(mode === 'brutto' ? (totalGross !== undefined ? totalGross : toGross(total)) : total)}</span><span className="unit">€</span></p>
           <p className="stat-sub">von {formatWhole(inMode(target, mode))}{'\u00a0'}€{note}</p>
         </div>
         <div className="stat-right">

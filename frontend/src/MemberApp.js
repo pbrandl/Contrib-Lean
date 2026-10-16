@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { api, byName, deviceId, fold, formatHours, formatNumber, inMode, isNewer, loginWithPin, memberSession, rememberTrust, useAmountMode, useNotice, usePolling } from './lib';
+import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useAmountMode, useNotice, usePolling } from './lib';
 import { Band, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
 
@@ -330,12 +330,13 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
 
   // The bid and the hours are absolute values, so a request without an answer can simply
   // go out again: the server stores the same value twice and nothing is doubled.
-  const save = useCallback(async (value) => {
+  // `gross`: a bid typed brutto; the server keeps that amount and derives netto from it.
+  const save = useCallback(async (value, gross) => {
     const started = sheet;
     if (!started || sendingRef.current) return;
     const { kind } = started;
     const path = kind === 'money' ? '/me/contribution' : '/me/hours';
-    const body = kind === 'money' ? { amount: value } : { hours: value };
+    const body = kind === 'hours' ? { hours: value } : gross !== undefined ? { gross } : { amount: value };
     sendingRef.current = true;
     setSaving(started);
     let saved = null;
@@ -360,7 +361,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
       apply(saved);
       if (sheetRef.current === started) closeSheet();
       if (kind === 'hours') showNotice('ok', `Dein Stundenbeitrag ist jetzt ${formatHours(saved.hours)} h.`);
-      else if (saved.contribution > 0) showNotice('ok', `Dein Beitrag ist jetzt ${formatNumber(inMode(saved.contribution, mode))} €.`);
+      else if (saved.contribution > 0) showNotice('ok', `Dein Beitrag ist jetzt ${formatNumber(mode === 'brutto' ? ownGross(saved) : saved.contribution)} €.`);
       else showNotice('ok', 'Dein Beitrag ist zurückgezogen.');
     } else if (failure.status === 401) {
       onLogout(failure.message);
@@ -395,7 +396,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
       <div inert={sheet ? true : undefined}>
         <Band className="pb-[3.9rem]">
           <TopBar label={me.user.name} onLogout={() => onLogout()} />
-          <Progress total={me.totalRaised} target={me.targetAmount} count={me.contributorCount} hours={me.totalHours} mode={mode} />
+          <Progress total={me.totalRaised} totalGross={totalGross(me)} target={me.targetAmount} count={me.contributorCount} hours={me.totalHours} mode={mode} />
         </Band>
 
         <main className="wrap relative -mt-8 grid gap-3 pb-8">
@@ -408,7 +409,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <p className="own-value" aria-live="polite">
                 <span className="sr-only">Beitrag: </span>
-                <span data-testid="own-amount">{formatNumber(inMode(me.contribution, mode))}</span>
+                <span data-testid="own-amount">{formatNumber(mode === 'brutto' ? ownGross(me) : me.contribution)}</span>
                 <span className="unit">€</span>
               </p>
               <p className="own-value ml-auto text-right text-werkblau" aria-live="polite">

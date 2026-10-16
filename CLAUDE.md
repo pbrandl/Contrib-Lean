@@ -54,10 +54,11 @@ Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/ad
 
 ### Data (`backend/data/`)
 
-`database.json` contains `{ rev, users, contributions, hours, targetAmount }`:
+`database.json` contains `{ rev, users, contributions, grossBids, hours, targetAmount }`:
 
 - `users`: `{ id, name, pinHash, pinVersion, defaultPin }`. The admin is the user with id `admin`. Member ids are `Date.now()`-based strings.
-- `contributions` / `hours`: maps from user id to value. They only hold values > 0; `setContribution`/`setHours` delete the key at 0.
+- `contributions` / `hours`: maps from user id to value. They only hold values > 0; `setContribution`/`setHours` delete the key at 0. `contributions` is always netto and is what every sum uses.
+- `grossBids`: the brutto amount for members who typed their bid brutto. That amount is leading: it is shown and exported as typed, and `contributions` holds the netto derived from it (`toNet`, rounded up). A netto bid, a step from an old page or a withdrawal removes the entry (`setContribution`). `grossOf()` gives the brutto of any bid.
 - `rev`: grows with every write.
 
 Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip`, `ua` and an 8-character device prefix; never a PIN), `backups/` (daily and hourly copies, plus one before every import; a failing backup is logged and does not stop the write) and `session-secret` (only created when missing or shorter than 32 bytes; an unreadable file stops the start). `migrateDatabase()` runs at startup and converts the old plain-text-PIN format.
@@ -68,7 +69,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - **Audit lines are recorded with `log(event, details)` inside `change`**; `mutate` writes them after the database, still inside the queue, with the new `rev`. Add `...requestInfo(req)` (ip, ua, device prefix) to every line. Login and failed login are logged with `audit()` directly (they change no data).
 - **scrypt never runs inside the queue:** routes hash a new PIN first and pass it as `setPin(user, pin, { hash })`. Only `migrateDatabase` and the import still hash inside.
 - Member write routes go through `limitWrites` (per-member budget: 50, then 10 per second, else 429).
-- **Bids and hours are absolute values:** `PUT /me/contribution {amount}` (netto, rounded to cents) and `PUT /me/hours {hours}` (rounded to 0.1 h). Writing the same value twice changes nothing, so `MemberPage.save` retries a request without an answer (status 0) up to 3 times.
+- **Bids and hours are absolute values:** `PUT /me/contribution {amount}` (netto, rounded to cents) or `{gross}` (brutto typed by the member, stored in `grossBids`), and `PUT /me/hours {hours}` (rounded to 0.1 h). Responses carry `contribution` (netto), `contributionGross` and `totalRaisedGross` next to `totalRaised`. Writing the same value twice changes nothing, so `MemberPage.save` retries a request without an answer (status 0) up to 3 times.
 - **Old pages:** `POST /me/contribution {delta, request}` and `POST /me/contribution/withdraw` stay only for pages loaded before the October 2026 update. Their steps are idempotent per request id (the last 20 per member in `data.requests`) and limited to `MAX_STEP`. The current frontend does not use them.
 - **Every state response carries `rev` and `boot`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp, via `isNewer` in `lib.js`) drops any response whose `rev` is older than what it shows, unless `boot` changed (server restart, e.g. after restoring a backup with a lower `rev`). New endpoints that return state must include `summary(data)`.
 
@@ -96,6 +97,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 ### Import and export
 
 - CSV is parsed and written in the browser (`frontend/src/csv.js`). It accepts `,` or `;`, German number formats and a BOM, and guards against spreadsheet formulas. The browser always sends JSON to `POST /admin/import`.
+- Export: `contributionsGross` and `enteredAs` (`brutto`/`netto`) per bid; the CSV has `contribution_gross` and `entered_as`. The import keeps a brutto amount only where `enteredAs` is `brutto`; otherwise it reads the netto value.
 - The import replaces all members, bids and hours. It matches existing members by id, then by name (case-insensitive, `sameName`). Matched members keep their PIN unless the file sets one; new members get `DEFAULT_PIN`. A backup is written first.
 
 ### Frontend structure
@@ -124,7 +126,7 @@ If you change one of these, update both sides:
 | Start PIN 1234, admin PIN 0000 | `DEFAULT_PIN`, `ADMIN_DEFAULT_PIN` | texts in `AdminApp` |
 | Max. bid 1,000,000 € netto | `MAX_AMOUNT` | `KINDS.money.maxInt` (6 digits) in `entry.js` |
 | Cents for euros, 0.1 h for hours | `requireAmount`, `requireHours` | `KINDS` in `entry.js`, `round1` in `AmountSheet.js` |
-| Brutto = netto × 1.19 in whole cents | `VAT_PERCENT`, `toGross` | `VAT_PERCENT`, `toGross` in `lib.js` |
+| Brutto = netto × 1.19 in whole cents; brutto typed → netto rounded up | `VAT_PERCENT`, `toGross`, `toNet` | `VAT_PERCENT`, `toGross`, `toNet` in `lib.js` |
 
 ## Product decisions
 
@@ -132,7 +134,7 @@ If you change one of these, update both sides:
 - Anonymity of bids is intended (see above).
 - The public name list is acceptable because the app is used only temporarily.
 - Hours have no target. The maximum stays 744 h per month.
-- Amounts are netto. Brutto (× 1.19) is only a display option for members and the admin; exports contain both.
+- Amounts are netto. Brutto (× 1.19) is a display option for members and the admin; exports contain both. A bid typed brutto is leading as typed (10 € brutto stays 10 €, not 10,01 €).
 - The bidding takes place **at a members' meeting where everyone is on the same WLAN**, so many phones share one public IP and log in at the same time.
 
 ## Open work (agreed October 2026)
@@ -160,17 +162,17 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
 
 ### Amounts
 
-- Everything is stored, sent, imported and summed **netto**. Brutto is netto × 1.19, rounded to the cent, and is for display only.
+- Everything is summed **netto**. Brutto is netto × 1.19, rounded to the cent, except for bids typed brutto (see below).
 - Members type euros with up to 2 decimals (e.g. 10,87) and hours with 1 decimal. The maximum stays 744 h; the server rounds hours to 0.1 h instead of 0.5 h.
 - The typed value **replaces** the previous bid. 0 withdraws the bid, so the Reset button goes away.
-- In brutto mode the member types brutto. The netto value is brutto / 1.19, rounded **up** to the cent. A 1-cent difference when it is shown as brutto again is accepted.
+- In brutto mode the member types brutto, and **that brutto amount is leading**: it is stored (`grossBids`) and shown and exported exactly as typed. The netto value is brutto / 1.19, rounded **up** to the cent, and counts for the sums. Not every brutto amount is netto × 1.19 of some netto amount (15 € brutto lies between 12,60 € and 12,61 € netto), so the brutto amount has to be stored; recomputing it from netto showed 10,01 € for 10 €. In brutto mode the totals use the typed brutto amounts too (`totalRaisedGross`).
 - The total of all bids and the Bedarf next to it (header and keypad sheet) are shown rounded to whole euros. Own bids keep their cents. The server keeps the exact sum.
 
 ### Backend
 
 - `PUT /me/contribution {amount}`: netto, 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`. The old delta routes stay for cached pages only (see "Write path").
 - `rev` in the response and the audit line with from/to.
-- Export: CSV gets a `contribution_gross` column next to `contribution` (netto), JSON a `contributionsGross` map next to `contributions`. The import keeps reading the netto values and ignores the brutto ones.
+- Export: CSV gets `contribution_gross` and `entered_as` columns next to `contribution` (netto), JSON `contributionsGross` and `enteredAs` maps next to `contributions`. The import reads the netto values, and for `entered_as` brutto the brutto amount, so a re-import keeps it.
 
 ### Member page
 

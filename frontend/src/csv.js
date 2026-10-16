@@ -57,6 +57,8 @@ const NAME_HEADERS = ['username', 'name', 'mitglied'];
 const PIN_HEADERS = ['pin'];
 const AMOUNT_HEADERS = ['contribution', 'gebot', 'betrag'];
 const HOURS_HEADERS = ['hours', 'stunden'];
+const GROSS_HEADERS = ['contribution_gross', 'brutto'];
+const ENTERED_HEADERS = ['entered_as', 'eingegeben'];
 
 // Spreadsheet apps run cells starting with = + - @ as formulas; a leading ' prevents that.
 const FORMULA_START = /^[=+\-@]/;
@@ -74,7 +76,14 @@ export function membersFromCsv(text) {
   let body = rows;
   if (head.some(h => NAME_HEADERS.includes(h))) {
     const find = (names) => head.findIndex(h => names.includes(h));
-    columns = { name: find(NAME_HEADERS), pin: find(PIN_HEADERS), contribution: find(AMOUNT_HEADERS), hours: find(HOURS_HEADERS) };
+    columns = {
+      name: find(NAME_HEADERS),
+      pin: find(PIN_HEADERS),
+      contribution: find(AMOUNT_HEADERS),
+      gross: find(GROSS_HEADERS),
+      entered: find(ENTERED_HEADERS),
+      hours: find(HOURS_HEADERS)
+    };
     body = rows.slice(1);
   }
 
@@ -96,7 +105,16 @@ export function membersFromCsv(text) {
     if (!Number.isFinite(hours)) {
       throw new Error(`Zeile ${line}: Die Stunden „${rawHours}“ sind keine gültige Zahl.`);
     }
-    return { line, name, pin: pin || undefined, contribution, hours };
+    // A bid typed brutto (entered_as "brutto", from an export) keeps its brutto amount.
+    const brutto = columns.entered !== undefined && cell(columns.entered).toLowerCase() === 'brutto';
+    const rawGross = brutto ? cell(columns.gross) : '';
+    const gross = rawGross === '' ? NaN : parseAmount(rawGross);
+    if (brutto && rawGross !== '' && !Number.isFinite(gross)) {
+      throw new Error(`Zeile ${line}: Der Bruttobetrag „${rawGross}“ ist keine gültige Zahl.`);
+    }
+    const user = { line, name, pin: pin || undefined, contribution, hours };
+    if (brutto && Number.isFinite(gross)) Object.assign(user, { contributionGross: gross, enteredAs: 'brutto' });
+    return user;
   });
 
   if (!users.length) throw new Error('Die Datei enthält keine Mitglieder.');
@@ -109,14 +127,16 @@ const quote = (value) => {
 };
 
 // PINs are stored as hashes and cannot be exported; the column stays for compatibility.
-// `contribution` is netto, `contribution_gross` only for reading: the import ignores it.
-// The BOM makes Excel read the file as UTF-8 (umlauts).
-export function membersToCsv(users, contributions, hours = {}) {
+// `contribution` is netto. `entered_as` says how the member typed the bid: for "brutto",
+// `contribution_gross` is that typed amount and the import keeps it; otherwise it is only
+// netto x 1.19 for reading. The BOM makes Excel read the file as UTF-8 (umlauts).
+export function membersToCsv(users, contributions, hours = {}, gross = {}, enteredAs = {}) {
   const rows = [
-    ['username', 'pin', 'contribution', 'contribution_gross', 'hours'],
+    ['username', 'pin', 'contribution', 'contribution_gross', 'entered_as', 'hours'],
     ...users.map(u => {
       const net = contributions[u.id] || 0;
-      return [guard(u.name), '', String(net), String(toGross(net)), String(hours[u.id] || 0)];
+      const brutto = net > 0 && enteredAs[u.id] === 'brutto' && gross[u.id] > 0;
+      return [guard(u.name), '', String(net), String(brutto ? gross[u.id] : toGross(net)), net > 0 ? (brutto ? 'brutto' : 'netto') : '', String(hours[u.id] || 0)];
     })
   ];
   return `\uFEFF${rows.map(r => r.map(quote).join(',')).join('\r\n')}\r\n`;

@@ -500,6 +500,47 @@ async function check(name, fn) {
     assert.doesNotMatch(res.raw, /pin|scrypt/i);
   });
 
+  await check('a bid typed brutto stays leading: shown, summed and exported as typed, kept by a re-import', async () => {
+    const member = await memberNow();
+    const gross = (net) => Math.round((Math.round(net * 100) * 119) / 100) / 100;
+    let res = await call('PUT', '/me/contribution', { token: member, body: { gross: 10 } });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.contribution, 8.41, 'netto rounded up');
+    assert.equal(res.body.contributionGross, 10, 'not 10.01');
+    res = await call('PUT', '/me/contribution', { token: member, body: { gross: 15 } });
+    assert.equal(res.body.contribution, 12.61);
+    assert.equal(res.body.contributionGross, 15, 'no netto amount gives exactly 15 brutto');
+    const others = Object.entries(db().contributions).filter(([id]) => id !== memberId).reduce((sum, [, net]) => sum + gross(net), 0);
+    assert.equal(res.body.totalRaisedGross, Math.round((others + 15) * 100) / 100);
+    for (const g of [-1, 'viel', 1000001, null]) {
+      assert.equal((await call('PUT', '/me/contribution', { token: member, body: { gross: g } })).status, 400, JSON.stringify(g));
+    }
+
+    const exp = (await call('GET', '/admin/export', { token: admin })).body;
+    assert.equal(exp.contributionsGross[memberId], 15);
+    assert.equal(exp.enteredAs[memberId], 'brutto');
+    assert.ok(Object.entries(exp.enteredAs).filter(([id]) => id !== memberId).every(([, v]) => v === 'netto'));
+    res = await call('POST', '/admin/import', {
+      token: admin,
+      body: { users: exp.users, contributions: exp.contributions, contributionsGross: exp.contributionsGross, enteredAs: exp.enteredAs, hours: exp.hours }
+    });
+    assert.equal(res.status, 200);
+    assert.equal(db().grossBids[memberId], 15);
+    assert.equal(db().contributions[memberId], 12.61);
+
+    res = await call('PUT', '/me/contribution', { token: member, body: { amount: 8.41 } });
+    assert.equal(res.body.contributionGross, 10.01, 'a netto bid: brutto follows from netto again');
+    assert.equal(db().grossBids[memberId], undefined);
+    await call('PUT', '/me/contribution', { token: member, body: { gross: 20 } });
+    await call('POST', '/me/contribution', { token: member, body: { delta: 1 } });
+    assert.equal(db().grossBids[memberId], undefined, 'a step from an old page drops the brutto amount');
+    res = await call('PUT', '/me/contribution', { token: member, body: { gross: 0 } });
+    assert.equal(res.body.contribution, 0);
+    assert.equal(res.body.contributionGross, 0);
+    res = await call('PUT', '/me/contribution', { token: member, body: { amount: 25 } });
+    assert.equal(res.body.contributionGross, gross(25));
+  });
+
   await check('import keeps PINs of known members, gives new ones the default PIN', async () => {
     const before = db();
     const known = before.users.find(u => u.id === memberId);

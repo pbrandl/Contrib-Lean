@@ -179,6 +179,10 @@ export const toGross = (net) => Math.round((Math.round(net * 100) * (100 + VAT_P
 // brutto again, it may differ by 1 cent). Integer cents, so 1886,15 gives exactly 1585.
 export const toNet = (gross) => Math.ceil((Math.round(gross * 100) * 100) / (100 + VAT_PERCENT)) / 100;
 export const inMode = (net, mode) => (mode === 'brutto' ? toGross(net) : net);
+// Brutto as the server reports it: a bid typed brutto keeps exactly that amount (it is
+// leading), any other bid is netto x 1.19. The fallbacks are for a server without it.
+export const ownGross = (me) => (typeof me.contributionGross === 'number' ? me.contributionGross : toGross(me.contribution));
+export const totalGross = (s) => (typeof s.totalRaisedGross === 'number' ? s.totalRaisedGross : toGross(s.totalRaised));
 
 // Netto or brutto display, stored per device. Default is netto.
 export function useAmountMode(key) {

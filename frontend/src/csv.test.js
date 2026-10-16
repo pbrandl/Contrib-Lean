@@ -30,12 +30,15 @@ test('keeps quoted line breaks and quotes', () => {
   ]);
 });
 
-test('export round-trips names, bids and hours; the gross column is only for reading', () => {
-  const users = [{ id: '1', name: 'Müller, Eva' }, { id: '2', name: '=Bob' }];
-  const csv = membersToCsv(users, { 1: 12.5 }, { 2: 4.5 });
-  expect(csv.split('\r\n')[0]).toBe('\uFEFFusername,pin,contribution,contribution_gross,hours');
-  expect(csv.split('\r\n')[1]).toBe('"Müller, Eva",,12.5,14.88,0');
-  expect(membersFromCsv(csv)).toEqual([
+test('export round-trips names, bids and hours; a bid typed brutto keeps its brutto amount', () => {
+  const users = [{ id: '1', name: 'Müller, Eva' }, { id: '2', name: '=Bob' }, { id: '3', name: 'Cem' }];
+  const csv = membersToCsv(users, { 1: 12.5, 3: 12.61 }, { 2: 4.5 }, { 1: 14.88, 3: 15 }, { 1: 'netto', 3: 'brutto' });
+  const lines = csv.split('\r\n');
+  expect(lines[0]).toBe('\uFEFFusername,pin,contribution,contribution_gross,entered_as,hours');
+  expect(lines[1]).toBe('"Müller, Eva",,12.5,14.88,netto,0');
+  expect(lines[3]).toBe('Cem,,12.61,15,brutto,0');
+  expect(membersFromCsv(csv)[2]).toEqual({ line: 4, name: 'Cem', pin: undefined, contribution: 12.61, hours: 0, contributionGross: 15, enteredAs: 'brutto' });
+  expect(membersFromCsv(csv).slice(0, 2)).toEqual([
     { line: 2, name: 'Müller, Eva', pin: undefined, contribution: 12.5, hours: 0 },
     { line: 3, name: '=Bob', pin: undefined, contribution: 0, hours: 4.5 }
   ]);

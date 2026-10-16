@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, X } from 'lucide-react';
-import { formatHours, formatWhole, inMode, round2, toNet } from './lib';
+import { formatHours, formatWhole, inMode, ownGross, round2, toNet, totalGross } from './lib';
 import { KINDS, MAX_HOURS, formatRaw, fromText, pressKey, rawValue, sanitize, toRaw } from './entry';
 
 // Phones and tablets get the page's own keypad, computers a text field on the same sheet.
@@ -12,15 +12,18 @@ const CURSOR_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 
 const round1 = (n) => Math.round(n * 10) / 10;
 
 // Full-screen sheet for a new bid (kind "money") or new hours ("hours"). What the member
-// types counts in the page's netto/brutto `mode`; `onSave` gets the netto amount or the hours.
+// types counts in the page's netto/brutto `mode`. `onSave(value, gross)` gets the netto amount
+// (or the hours), and for a bid typed brutto also that brutto amount, which stays leading.
 // `busy`: this sheet's value is being saved. `waiting`: an earlier save (from a sheet that was
 // closed before the answer came) is still running, so this one cannot be saved yet.
 export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = false, onSave, onClose }) {
   const k = KINDS[kind];
   const money = kind === 'money';
-  const current = money ? me.contribution : me.hours;
+  const brutto = money && mode === 'brutto';
+  // The current value in what the member types: brutto, netto or hours.
+  const current = money ? (brutto ? ownGross(me) : me.contribution) : me.hours;
   // It starts with the current value, so a small change needs only a few keys.
-  const [initial] = useState(() => toRaw(money ? inMode(current, mode) : current, kind));
+  const [initial] = useState(() => toRaw(current, kind));
   const [raw, setRaw] = useState(initial);
   const [pressed, setPressed] = useState(null);
   const [focused, setFocused] = useState(false);
@@ -29,12 +32,13 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
   const flashTimer = useRef(null);
 
   const typed = rawValue(raw);
-  const next = money ? (mode === 'brutto' ? toNet(typed) : round2(typed)) : round1(typed);
+  const entered = money ? round2(typed) : round1(typed);
+  const next = brutto ? toNet(entered) : entered;
   // Typed back to the start value, or the same amount written differently ("1585,00").
-  const unchanged = raw === initial || next === current;
+  const unchanged = raw === initial || entered === current;
 
   const latest = useRef(null);
-  latest.current = { unchanged, next, busy, waiting };
+  latest.current = { unchanged, next, gross: brutto ? entered : undefined, busy, waiting };
 
   const press = useCallback((key) => {
     if (latest.current.busy) return;
@@ -42,8 +46,8 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
   }, [kind]);
 
   const save = useCallback(() => {
-    const { unchanged: same, next: value, busy: sending, waiting: blocked } = latest.current;
-    if (!same && !sending && !blocked) onSave(value);
+    const { unchanged: same, next: amount, gross, busy: sending, waiting: blocked } = latest.current;
+    if (!same && !sending && !blocked) onSave(amount, gross);
   }, [onSave]);
 
   const focusField = () => {
@@ -162,7 +166,9 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
     const now = round2(me.totalRaised);
     const preview = unchanged ? now : round2(me.totalRaised - me.contribution + next);
     const percent = (n) => (me.targetAmount > 0 ? Math.min(100, (n / me.targetAmount) * 100) : 0);
-    total = `${formatWhole(inMode(preview, mode))} €`;
+    // In brutto mode the total counts the typed brutto amounts as they are.
+    const shownTotal = brutto ? (unchanged ? totalGross(me) : totalGross(me) - ownGross(me) + entered) : preview;
+    total = `${formatWhole(shownTotal)}\u00a0€`;
     of = `von ${formatWhole(inMode(me.targetAmount, mode))} €`;
     bars = (
       <div className="sheet-track" aria-hidden="true">

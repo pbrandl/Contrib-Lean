@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
-import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, useAmountMode, useNotice, usePolling } from './lib';
+import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, totalGross, useAmountMode, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
 import { Band, Callout, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
@@ -113,7 +113,7 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
     <>
       <Band className="pb-8">
         <TopBar label="Admin" onLogout={() => onLogout()} />
-        <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} />
+        <Progress total={data.totalRaised} totalGross={totalGross(data)} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} />
       </Band>
 
       <main className="wrap space-y-7 pb-24 pt-6">
@@ -423,9 +423,12 @@ function fromJson(text) {
   const users = json.users.filter(u => u && u.id !== 'admin');
   const contributions = json.contributions && typeof json.contributions === 'object' ? json.contributions : {};
   const hours = json.hours && typeof json.hours === 'object' ? json.hours : {};
+  // Bids typed brutto keep their brutto amount (from the export of this app).
+  const contributionsGross = json.contributionsGross && typeof json.contributionsGross === 'object' ? json.contributionsGross : undefined;
+  const enteredAs = json.enteredAs && typeof json.enteredAs === 'object' ? json.enteredAs : undefined;
   const target = Number(json.targetAmount) > 0 ? Number(json.targetAmount) : null;
   return {
-    body: { users, contributions, hours, targetAmount: target || undefined },
+    body: { users, contributions, contributionsGross, enteredAs, hours, targetAmount: target || undefined },
     count: users.length,
     total: round2(users.reduce((sum, u) => sum + (Number(contributions[u.id]) || 0), 0)),
     target
@@ -467,7 +470,7 @@ function DataSection({ memberCount, call, showNotice }) {
     try {
       const data = await call('/admin/export', { timeout: 60 * 1000 });
       if (kind === 'csv') {
-        download(`bietrunde-${today()}.csv`, 'text/csv;charset=utf-8', membersToCsv(data.users, data.contributions, data.hours));
+        download(`bietrunde-${today()}.csv`, 'text/csv;charset=utf-8', membersToCsv(data.users, data.contributions, data.hours, data.contributionsGross, data.enteredAs));
       } else {
         download(`bietrunde-${today()}.json`, 'application/json', JSON.stringify(data, null, 2));
       }

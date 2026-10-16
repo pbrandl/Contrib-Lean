@@ -1,12 +1,17 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import MemberApp from './MemberApp';
+import { toGross, toNet } from './lib';
 
 const respond = (body) => Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) });
-// Anna bids 1585 € and 11,5 h; the others together 16835 € and 135,5 h.
-const me = (contribution, rev, hours = 11.5) => ({
-  rev, boot: 'x', totalRaised: 16835 + contribution, targetAmount: 24000, contributorCount: 12, totalHours: 135.5 + hours,
-  user: { id: '7', name: 'Anna', defaultPin: false }, contribution, hours
-});
+// Anna bids 1585 € and 11,5 h; the others together 16835 € and 135,5 h. `gross`: a bid typed brutto.
+const me = (contribution, rev, hours = 11.5, gross = 0) => {
+  const contributionGross = gross || toGross(contribution);
+  return {
+    rev, boot: 'x', totalRaised: 16835 + contribution, totalRaisedGross: toGross(16835) + contributionGross,
+    targetAmount: 24000, contributorCount: 12, totalHours: 135.5 + hours,
+    user: { id: '7', name: 'Anna', defaultPin: false }, contribution, contributionGross, hours
+  };
+};
 
 const fail = (status, error) => Promise.resolve({ ok: false, status, headers: { get: () => null }, json: () => Promise.resolve({ error }) });
 
@@ -35,7 +40,11 @@ function server({ failFirst = false, errorFirst = null, hold = null } = {}) {
         }));
       }
       const body = JSON.parse(options.body);
-      if (url === '/api/me/contribution') state = me(body.amount, state.rev + 1, state.hours);
+      if (url === '/api/me/contribution') {
+        state = body.gross !== undefined
+          ? me(toNet(body.gross), state.rev + 1, state.hours, body.gross)
+          : me(body.amount, state.rev + 1, state.hours);
+      }
       if (url === '/api/me/hours') state = me(state.contribution, state.rev + 1, body.hours);
       return respond(state);
     }
@@ -84,7 +93,7 @@ test('desktop: the text field starts with the bid, previews the total and saves 
   expect(screen.getByRole('button', { name: 'Beitrag ändern' })).toHaveFocus();
 });
 
-test('brutto mode shows brutto everywhere, and a brutto input is sent netto, rounded up to the cent', async () => {
+test('brutto mode shows brutto everywhere, and a brutto input is sent as brutto and shown exactly as typed', async () => {
   server();
   render(<MemberApp />);
   fireEvent.click(await screen.findByRole('button', { name: /Beträge netto/ }));
@@ -98,9 +107,24 @@ test('brutto mode shows brutto everywhere, and a brutto input is sent netto, rou
   expect(input).toHaveValue('1.886,15');
   fireEvent.paste(input, { clipboardData: { getData: () => '12,94 €' } });
   expect(input).toHaveValue('12,94');
+  expect(screen.getByTestId('sheet-total')).toHaveTextContent('20.047 €'); // the others' brutto + 12,94
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
-  expect(await screen.findByText('Dein Beitrag ist jetzt 12,95 €.')).toBeInTheDocument();
-  expect(puts()).toEqual([['/api/me/contribution', { amount: 10.88 }]]);
+  expect(await screen.findByText('Dein Beitrag ist jetzt 12,94 €.')).toBeInTheDocument();
+  expect(screen.getByTestId('own-amount')).toHaveTextContent('12,94');
+
+  // 10 € brutto stays 10 €, not 10,01 € (netto 8,41 x 1,19).
+  fireEvent.click(screen.getByRole('button', { name: 'Beitrag ändern' }));
+  const again = screen.getByLabelText('Dein Beitrag in Euro');
+  expect(again).toHaveValue('12,94');
+  fireEvent.paste(again, { clipboardData: { getData: () => '10' } });
+  fireEvent.keyDown(again, { key: 'Enter' });
+  expect(await screen.findByText('Dein Beitrag ist jetzt 10 €.')).toBeInTheDocument();
+  expect(screen.getByTestId('own-amount')).toHaveTextContent('10');
+  expect(puts()).toEqual([['/api/me/contribution', { gross: 12.94 }], ['/api/me/contribution', { gross: 10 }]]);
+
+  // Back in netto mode the netto amount shows, rounded up from 10 € brutto.
+  fireEvent.click(screen.getByRole('button', { name: /Beträge brutto/ }));
+  expect(screen.getByTestId('own-amount')).toHaveTextContent('8,41');
 });
 
 test('keypad: digits, comma and backspace; hours above 744 cannot be typed; 0 withdraws the bid', async () => {

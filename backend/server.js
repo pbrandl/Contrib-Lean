@@ -23,6 +23,8 @@ const MAX_STEP = 10000; // only for pages from before the new bid entry
 // Computed in whole cents, like toGross in frontend/src/lib.js, so half cents round up.
 const VAT_PERCENT = 19;
 const toGross = (net) => Math.round((Math.round(net * 100) * (100 + VAT_PERCENT)) / 100) / 100;
+// A brutto amount typed by a member, in netto, rounded up to the cent (like toNet in lib.js).
+const toNet = (gross) => Math.ceil((Math.round(gross * 100) * 100) / (100 + VAT_PERCENT)) / 100;
 const MAX_NAME_LENGTH = 60;
 const MEMBER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -226,6 +228,7 @@ async function readDatabase() {
   data.contributions = data.contributions || {};
   data.hours = data.hours || {};
   data.requests = data.requests || {};
+  data.grossBids = data.grossBids || {};
   return data;
 }
 
@@ -622,13 +625,24 @@ const hashPinLimited = (req, pin) => withPinSlot(req, true, () => hashPin(pin));
 
 // Response shapes
 
+// Brutto of a bid: what the member typed if they bid brutto (that amount is leading),
+// otherwise netto x 1.19.
+function grossOf(data, userId) {
+  const net = own(data.contributions, userId) || 0;
+  if (!(net > 0)) return 0;
+  const gross = own(data.grossBids, userId);
+  return gross > 0 ? gross : toGross(net);
+}
+
 function summary(data) {
-  const amounts = Object.values(data.contributions).filter(a => a > 0);
+  const ids = Object.keys(data.contributions).filter(id => data.contributions[id] > 0);
+  const amounts = ids.map(id => data.contributions[id]);
   const hours = Object.values(data.hours).filter(h => h > 0);
   return {
     rev: data.rev || 0,
     boot: BOOT,
     totalRaised: round2(amounts.reduce((sum, a) => sum + a, 0)),
+    totalRaisedGross: round2(ids.reduce((sum, id) => sum + grossOf(data, id), 0)),
     targetAmount: data.targetAmount,
     contributorCount: amounts.length,
     totalHours: hours.reduce((sum, h) => sum + h, 0)
@@ -640,6 +654,7 @@ function memberView(data, user) {
     ...summary(data),
     user: { id: user.id, name: user.name, defaultPin: !!user.defaultPin },
     contribution: data.contributions[user.id] || 0,
+    contributionGross: grossOf(data, user.id),
     hours: data.hours[user.id] || 0
   };
 }
@@ -656,9 +671,13 @@ function adminView(data) {
   };
 }
 
-function setContribution(data, userId, amount) {
+// `gross`: the brutto amount the member typed; it stays leading for display and export.
+// Without it (a netto bid) a former brutto amount is dropped.
+function setContribution(data, userId, amount, gross = 0) {
   if (amount > 0) data.contributions[userId] = amount;
   else delete data.contributions[userId];
+  if (amount > 0 && gross > 0) data.grossBids[userId] = gross;
+  else delete data.grossBids[userId];
 }
 
 function setHours(data, userId, hours) {
@@ -762,15 +781,18 @@ api.get('/me', memberOnly, handle(async (req, res) => {
   res.json(memberView(req.data, req.user));
 }));
 
-// The member sets the bid as a fixed amount (netto) with the keypad or the text field.
+// The member sets the bid as a fixed amount with the keypad or the text field: netto as
+// {amount}, or brutto as {gross} (then netto is derived and the brutto amount stays leading).
 // Setting the same amount twice changes nothing, so a page may simply send it again.
 api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
-  const amount = requireAmount(req.body && req.body.amount, 'Der Beitrag');
+  const body = req.body || {};
+  const gross = body.gross !== undefined ? requireAmount(body.gross, 'Der Beitrag') : 0;
+  const amount = body.gross !== undefined ? toNet(gross) : requireAmount(body.amount, 'Der Beitrag');
   const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     const from = data.contributions[user.id] || 0;
-    setContribution(data, user.id, amount);
-    log('bid', { userId: user.id, name: user.name, from, to: amount, ...requestInfo(req) });
+    setContribution(data, user.id, amount, gross);
+    log('bid', { userId: user.id, name: user.name, from, to: amount, gross: gross || undefined, ...requestInfo(req) });
     return user;
   });
   res.json(memberView(data, result));
@@ -886,6 +908,7 @@ api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
     const hours = own(data.hours, userId) || 0;
     data.users = data.users.filter(u => u.id !== userId);
     delete data.contributions[userId];
+    delete data.grossBids[userId];
     delete data.hours[userId];
     delete data.requests[userId];
     log('user_deleted', { userId, name: user.name, contribution, hours, ...requestInfo(req) });
@@ -931,7 +954,9 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
   res.json({
     users: data.users.filter(u => !isAdminId(u.id)).map(u => ({ id: u.id, name: u.name })),
     contributions: data.contributions,
-    contributionsGross: Object.fromEntries(Object.entries(data.contributions).map(([id, net]) => [id, toGross(net)])),
+    contributionsGross: Object.fromEntries(Object.keys(data.contributions).map(id => [id, grossOf(data, id)])),
+    // Bids typed brutto: there the brutto amount is leading.
+    enteredAs: Object.fromEntries(Object.keys(data.contributions).map(id => [id, own(data.grossBids, id) > 0 ? 'brutto' : 'netto'])),
     hours: data.hours,
     targetAmount: data.targetAmount,
     exportDate: new Date().toISOString()
@@ -952,6 +977,8 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
     throw new HttpError(400, `Die Datei enthält mehr als ${MAX_IMPORT_ENTRIES} Einträge.`);
   }
   const contributionsIn = body.contributions && typeof body.contributions === 'object' ? body.contributions : {};
+  const grossIn = body.contributionsGross && typeof body.contributionsGross === 'object' ? body.contributionsGross : {};
+  const enteredAsIn = body.enteredAs && typeof body.enteredAs === 'object' ? body.enteredAs : {};
   const hoursIn = body.hours && typeof body.hours === 'object' ? body.hours : {};
   const hasTarget = body.targetAmount !== undefined && body.targetAmount !== null && body.targetAmount !== '';
   const targetAmount = hasTarget ? requireAmount(body.targetAmount, 'Der Bedarf') : null;
@@ -966,12 +993,19 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
       const amountGiven = rawAmount !== undefined && rawAmount !== null && rawAmount !== '';
       const rawHours = u.hours !== undefined ? u.hours : own(hoursIn, id);
       const hoursGiven = rawHours !== undefined && rawHours !== null && rawHours !== '';
+      // A bid typed brutto (from an export) keeps its brutto amount; netto follows from it.
+      const enteredAs = u.enteredAs !== undefined ? u.enteredAs : own(enteredAsIn, id);
+      const rawGross = u.contributionGross !== undefined ? u.contributionGross : own(grossIn, id);
+      const gross = enteredAs === 'brutto' && rawGross !== undefined && rawGross !== null && rawGross !== ''
+        ? requireAmount(rawGross, `${where}: Der Bruttobetrag`)
+        : 0;
       return {
         where,
         id: usableId(id) ? id : null,
         name: requireName(u.name, where),
         pin: pinGiven ? requirePin(String(u.pin), where) : null,
-        contribution: amountGiven ? requireAmount(rawAmount, `${where}: Der Betrag`) : 0,
+        contribution: gross > 0 ? toNet(gross) : amountGiven ? requireAmount(rawAmount, `${where}: Der Betrag`) : 0,
+        gross,
         hours: hoursGiven ? requireHours(rawHours, `${where}: Die Stunden`) : 0
       };
     });
@@ -989,6 +1023,7 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
     const defaultHash = await hashPin(DEFAULT_PIN);
     const users = [];
     const contributions = {};
+    const grossBids = {};
     const hours = {};
 
     for (const entry of entries) {
@@ -1005,12 +1040,14 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
       }
       users.push(user);
       if (entry.contribution > 0) contributions[user.id] = entry.contribution;
+      if (entry.contribution > 0 && entry.gross > 0) grossBids[user.id] = entry.gross;
       if (entry.hours > 0) hours[user.id] = entry.hours;
     }
 
     const before = summary(data);
     data.users = [admin, ...users];
     data.contributions = contributions;
+    data.grossBids = grossBids;
     data.hours = hours;
     data.requests = {};
     if (targetAmount) data.targetAmount = targetAmount;
