@@ -185,7 +185,7 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
   - Heading left, netto/brutto toggle right on the same line.
   - Below it: own bid (€) left and own hours (h) right, in the same font size and without labels.
-  - Below that: two equal buttons "Beitrag" (left) and "Stundenbeitrag" (right), both light blue (`blau-hell`), not yellow, text only without icons.
+  - Below that: two equal buttons "Beitrag ändern" (left) and "Stunden ändern" (right), both light blue (`blau-hell`), not yellow, text only without icons.
 - **Netto/brutto toggle:**
   - A plain text button that shows the current mode ("Netto"/"Brutto"), slightly smaller than body text and grey.
   - No padding (the text ends flush with the card edge), no background, no hover highlight.
@@ -199,7 +199,7 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
 
 ### Keypad sheet (touch devices, `pointer: coarse`, including tablets)
 
-A tap on "Beitrag" or "Stundenbeitrag" opens a full-screen dark blue sheet. It must fit on one screen without scrolling on every touch device.
+A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sheet. It must fit on one screen without scrolling on every touch device.
 
 - **Top:** close button (X) and the title "Dein Beitrag" / "Dein Stundenbeitrag".
 - **Totals strip:**
