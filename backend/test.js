@@ -45,6 +45,7 @@ const newIp = () => {
 const statuses = (responses) => responses.map(r => r.status);
 
 async function check(name, fn) {
+  advance(10 * 1000); // refills the write budgets (10 per second), far below every login lock
   try {
     await fn();
     results.push(['ok', name]);
@@ -100,13 +101,28 @@ async function check(name, fn) {
 
   const added = await call('POST', '/admin/users', { token: admin, body: { name: 'Test Bieterin' } });
   const memberId = added.body.added.id;
-  await check('admin adds a member with default PIN', async () => {
+  const memberPin = added.body.added.startPin;
+  await check('admin adds a member with a random start PIN that is shown once', async () => {
     assert.equal(added.status, 200);
     assert.equal(added.body.added.defaultPin, true);
+    assert.match(memberPin, /^\d{4}$/);
+    assert.notEqual(memberPin, '1234');
+    assert.equal(added.body.users.find(u => u.id === memberId).defaultPin, true);
+    assert.doesNotMatch(JSON.stringify(added.body.users), /startPin|pinHash/);
     assert.equal((await call('POST', '/admin/users', { token: admin, body: { name: 'test bieterin' } })).status, 409);
+    const pins = new Set();
+    for (let i = 0; i < 5; i += 1) {
+      pins.add((await call('POST', '/admin/users', { token: admin, body: { name: `Zufall ${i}` } })).body.added.startPin);
+    }
+    assert.ok(pins.size >= 4, 'start PINs differ');
+    const chosen = await call('POST', '/admin/users', { token: admin, body: { name: 'Mit PIN', pin: '2222' } });
+    assert.equal(chosen.body.added.startPin, undefined);
+    assert.equal((await call('POST', '/login', { body: { userId: added.body.added.id, pin: '1234' } })).status, 401);
+    const raw = fs.readFileSync(path.join(dataDir, 'database.json'), 'utf8');
+    assert.ok(!raw.includes(`"${memberPin}"`), 'start PIN is not stored in plain text');
   });
 
-  const memberLogin = await call('POST', '/login', { body: { userId: memberId, pin: '1234' } });
+  const memberLogin = await call('POST', '/login', { body: { userId: memberId, pin: memberPin } });
   const member = memberLogin.body.token;
 
   await check('member session cannot use admin endpoints', async () => {
@@ -114,11 +130,14 @@ async function check(name, fn) {
     assert.equal((await call('GET', '/admin/data', { token: member })).status, 401);
   });
 
-  await check('200 parallel clicks: no bid is lost', async () => {
+  await check('200 parallel clicks: every accepted bid counts, the flood beyond the write budget gets 429', async () => {
     const clicks = Array.from({ length: 200 }, (_, i) => (i % 4 === 3 ? 10 : 5));
-    const expected = clicks.reduce((a, b) => a + b, 0);
     const responses = await Promise.all(clicks.map(delta => call('POST', '/me/contribution', { token: member, body: { delta } })));
-    assert.ok(responses.every(r => r.status === 200));
+    assert.ok(responses.every(r => r.status === 200 || r.status === 429));
+    const accepted = clicks.filter((_, i) => responses[i].status === 200);
+    assert.ok(accepted.length >= 50 && accepted.length < 200, `${accepted.length} accepted`);
+    assert.match(responses.find(r => r.status === 429).body.error, /Zu viele Änderungen/);
+    const expected = accepted.reduce((a, b) => a + b, 0);
     const me = await call('GET', '/me', { token: member });
     assert.equal(me.body.contribution, expected);
     assert.equal(db().contributions[memberId], expected);
@@ -126,7 +145,7 @@ async function check(name, fn) {
 
   await check('parallel bids of two members plus admin changes stay consistent', async () => {
     const second = await call('POST', '/admin/users', { token: admin, body: { name: 'Zweiter Bieter' } });
-    const t2 = (await call('POST', '/login', { body: { userId: second.body.added.id, pin: '1234' } })).body.token;
+    const t2 = (await call('POST', '/login', { body: { userId: second.body.added.id, pin: second.body.added.startPin } })).body.token;
     const before = (await call('GET', '/me', { token: member })).body.contribution;
     await Promise.all([
       ...Array.from({ length: 50 }, () => call('POST', '/me/contribution', { token: member, body: { delta: 1 } })),
@@ -180,11 +199,11 @@ async function check(name, fn) {
     for (let i = 0; i < 5; i += 1) {
       assert.equal((await call('POST', '/login', { ip, body: { userId: memberId, pin: '9999' } })).status, 401);
     }
-    assert.equal((await call('POST', '/login', { ip, body: { userId: memberId, pin: '1234' } })).status, 429);
+    assert.equal((await call('POST', '/login', { ip, body: { userId: memberId, pin: memberPin } })).status, 429);
   });
 
   await check('the lock does not affect other devices', async () => {
-    assert.equal((await call('POST', '/login', { ip: '198.51.100.9', body: { userId: memberId, pin: '1234' } })).status, 200);
+    assert.equal((await call('POST', '/login', { ip: '198.51.100.9', body: { userId: memberId, pin: memberPin } })).status, 200);
   });
 
   const addMember = async (name, pin) => (await call('POST', '/admin/users', { token: admin, body: { name, pin } })).body.added.id;
@@ -207,7 +226,7 @@ async function check(name, fn) {
     const owner = await call('POST', '/login', { ip: wlan, body: { userId: bea, pin: '2580', device: phoneB } });
     assert.equal(owner.status, 200);
     assert.equal(typeof owner.body.trust, 'string');
-    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: memberId, pin: '1234', device: phoneA } })).status, 200);
+    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: memberId, pin: memberPin, device: phoneA } })).status, 200);
   });
 
   await check('old pages without device id fall back to the network, IPv6 grouped by /64', async () => {
@@ -321,6 +340,91 @@ async function check(name, fn) {
     assert.equal((await call('POST', '/login', { body: { userId: 'admin', pin: '0000' } })).status, 401);
   });
 
+  await check('API answers carry security headers, also for errors', async () => {
+    for (const [method, url, body] of [['GET', '/public'], ['GET', '/nirgends'], ['POST', '/login', { userId: 'admin' }]]) {
+      const res = await fetch(`${base}/api${url}`, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff', url);
+      assert.equal(res.headers.get('x-frame-options'), 'DENY', url);
+      assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/, url);
+      assert.equal(res.headers.get('cache-control'), 'no-store', url);
+    }
+    const broken = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"userId":' });
+    assert.equal(broken.status, 400);
+    assert.equal(broken.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  await check('request bodies are small except for the import, client errors are no 500', async () => {
+    const big = await call('POST', '/login', { body: { userId: 'admin', pin: '0000', padding: 'x'.repeat(20000) } });
+    assert.equal(big.status, 413);
+    const badUrl = await fetch(`${base}/api/admin/users/%E0%A4%A`, { method: 'DELETE', headers: { Authorization: `Bearer ${admin}` } });
+    assert.equal(badUrl.status, 400);
+    const charset = await fetch(`${base}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=klingonisch' }, body: '{}' });
+    assert.equal(charset.status, 415);
+    const tooMany = await call('POST', '/admin/import', { token: admin, body: { users: Array.from({ length: 5001 }, (_, i) => ({ name: `N${i}` })) } });
+    assert.equal(tooMany.status, 400);
+    assert.match(tooMany.body.error, /mehr als 5000/);
+    assert.equal((await call('POST', '/admin/import', { body: { users: [], padding: 'x'.repeat(20000) } })).status, 401, 'no big body without admin session');
+  });
+
+  // The member's PIN is 2468 since 'member changes own PIN'; older tokens are void.
+  const memberNow = async () => (await call('POST', '/login', { body: { userId: memberId, pin: '2468' } })).body.token;
+
+  await check('numbers only as decimals, names without invisible characters', async () => {
+    const member = await memberNow();
+    for (const hours of ['0x10', '1e2', '0b11', ' ', '']) {
+      assert.equal((await call('PUT', '/me/hours', { token: member, body: { hours } })).status, 400, JSON.stringify(hours));
+    }
+    for (const targetAmount of ['1e3', '0x10', 'Infinity']) {
+      assert.equal((await call('PUT', '/admin/target', { token: admin, body: { targetAmount } })).status, 400, targetAmount);
+    }
+    assert.equal((await call('PUT', '/admin/target', { token: admin, body: { targetAmount: '7000' } })).status, 200);
+    const zoe = await call('POST', '/admin/users', { token: admin, body: { name: 'Zo\u00eb' } });
+    assert.equal(zoe.status, 200);
+    assert.equal((await call('POST', '/admin/users', { token: admin, body: { name: 'Zoe\u0308' } })).status, 409, 'NFD look-alike');
+    assert.equal((await call('POST', '/admin/users', { token: admin, body: { name: 'Z\u200bo\u00eb' } })).status, 409, 'zero-width look-alike');
+    const bidi = await call('POST', '/admin/users', { token: admin, body: { name: 'Max\u202e  Muster' } });
+    assert.equal(bidi.body.added.name, 'Max Muster');
+  });
+
+  await check('a script cannot flood the write queue', async () => {
+    const member = await memberNow();
+    const res = [];
+    for (let i = 0; i < 60; i += 1) res.push(await call('PUT', '/me/hours', { token: member, body: { hours: 6 } }));
+    assert.ok(res.filter(r => r.status === 429).length > 0);
+    assert.ok(res.slice(0, 50).every(r => r.status === 200));
+    advance(10 * 1000);
+    assert.equal((await call('PUT', '/me/hours', { token: member, body: { hours: 6 } })).status, 200);
+  });
+
+  await check('import ignores ids that every object has, so no bid is lost', async () => {
+    const res = await call('POST', '/admin/import', {
+      token: admin,
+      body: {
+        users: [{ id: 'constructor', name: 'Konstantin' }, { id: '__proto__', name: 'Proto' }, { id: 'admin', name: 'Kein Admin' }, { id: memberId, name: 'Test Bieterin' }],
+        contributions: { ...JSON.parse('{"constructor": 7, "__proto__": 8}'), [memberId]: 25 },
+        hours: { [memberId]: 6 }
+      }
+    });
+    assert.equal(res.status, 200);
+    const data = db();
+    const ids = data.users.map(u => u.id);
+    assert.ok(!ids.includes('constructor') && !ids.includes('__proto__'));
+    assert.equal(ids.filter(id => id === 'admin').length, 1);
+    assert.equal(data.contributions[memberId], 25);
+    const byName = (name) => data.contributions[data.users.find(u => u.name === name).id];
+    assert.equal(byName('Konstantin'), 7);
+    assert.equal(byName('Proto'), 8);
+    assert.equal(Object.keys(data.contributions).length, 3);
+  });
+
+  await check('responses carry the server start id, backups are made every hour', async () => {
+    const pub = await call('GET', '/public');
+    assert.match(pub.body.boot, /^[A-Za-z0-9_-]{8}$/);
+    const files = fs.readdirSync(path.join(dataDir, 'backups'));
+    assert.ok(files.some(f => /^database-\d{4}-\d{2}-\d{2}-\d{2}h\.json$/.test(f)), files.join(', '));
+    assert.ok(files.some(f => /^database-\d{4}-\d{2}-\d{2}\.json$/.test(f)));
+  });
+
   await check('export has bids and hours but no PINs', async () => {
     const res = await call('GET', '/admin/export', { token: admin });
     assert.equal(res.status, 200);
@@ -408,9 +512,24 @@ async function check(name, fn) {
     assert.equal(trusted.body.role, 'admin');
   });
 
-  await check('audit log records every bid', async () => {
-    const lines = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
-    assert.ok(lines.filter(l => l.event === 'bid').length >= 300);
+  await check('audit log records every change in order, with address, browser and device, never a PIN', async () => {
+    const raw = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8');
+    const lines = raw.trim().split('\n').map(l => JSON.parse(l));
+    const bids = lines.filter(l => l.event === 'bid');
+    assert.ok(bids.length >= 100, `${bids.length} bids`);
+    for (const l of bids) {
+      assert.equal(typeof l.rev, 'number');
+      assert.equal(l.ip, '127.0.0.1');
+      assert.equal(l.ua, 'node');
+    }
+    const revs = lines.filter(l => typeof l.rev === 'number').map(l => l.rev);
+    assert.deepEqual(revs, [...revs].sort((a, b) => a - b), 'rev never goes back');
+    assert.ok(lines.some(l => l.event === 'login' && l.device && l.device.length === 8));
+    assert.ok(lines.some(l => l.event === 'login_failed'));
+    assert.ok(lines.some(l => l.event === 'user_added'));
+    assert.ok(lines.some(l => l.event === 'import' && l.before));
+    assert.doesNotMatch(raw, /pinHash|scrypt|startPin|"pin"/);
+    assert.ok(!raw.includes(`"${memberPin}"`));
   });
 
   await check('database file is only readable by the owner', async () => {

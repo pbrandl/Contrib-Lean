@@ -23,6 +23,14 @@ const MAX_NAME_LENGTH = 60;
 const MEMBER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
 const DAILY_BACKUPS_TO_KEEP = 60;
+const HOURLY_BACKUPS_TO_KEEP = 48;
+const MAX_IMPORT_ENTRIES = 5000;
+const START_PIN_DIGITS = 4;
+// Writes per member (bids, hours, PIN): 50 at once, then 10 per second. A page sends
+// at most one request per click, so only a script can reach this.
+const WRITE_LIMIT = { burst: 50, refillMs: 100 };
+// Changes with every start, so pages accept a lower rev after a backup was restored.
+const BOOT = crypto.randomBytes(6).toString('base64url');
 
 // Login throttling (in memory, a restart resets it).
 // Own device: after LOCK_AFTER wrong PINs for an account the device is locked for it,
@@ -50,14 +58,28 @@ const MAX_WAITING_PIN_CHECKS = 200;
 // Uberspace puts exactly one reverse proxy in front of the app.
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1mb' }));
+
+// API answers are JSON only: never cached, never shown in a frame, never sniffed as HTML.
+app.use('/api', (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer'
+  });
+  next();
+});
+
+// Small request bodies everywhere. Only the import gets 1 MB, and only after the admin
+// session was checked (see the import route).
+const IMPORT_PATH = '/api/admin/import';
+const smallJson = express.json({ limit: '16kb' });
+const importJson = express.json({ limit: '1mb' });
+app.use((req, res, next) => (req.path === IMPORT_PATH ? next() : smallJson(req, res, next)));
 
 // Uberspace forwards /api with the full path, so all routes live under /api.
 const api = express.Router();
-api.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store');
-  next();
-});
 
 class HttpError extends Error {
   constructor(status, message, retryAfterMs) {
@@ -72,8 +94,9 @@ const handle = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const isAdminId = (id) => id === 'admin';
-const sameName = (a, b) => a.trim().toLocaleLowerCase('de') === b.trim().toLocaleLowerCase('de');
+const sameName = (a, b) => a.normalize('NFC').trim().toLocaleLowerCase('de') === b.normalize('NFC').trim().toLocaleLowerCase('de');
 const formatAmount = (n) => n.toLocaleString('de-DE');
+const own = (object, key) => (Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined);
 
 function requirePin(pin, where = '') {
   if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
@@ -82,26 +105,39 @@ function requirePin(pin, where = '') {
   return pin;
 }
 
+// Names are shown to everybody, so invisible and direction-changing characters are
+// removed: nobody can add a look-alike of an existing name.
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]/g;
+
 function requireName(name, where = '') {
-  const clean = typeof name === 'string' ? name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
+  const clean = typeof name === 'string' ? name.normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim() : '';
   if (!clean || clean.length > MAX_NAME_LENGTH) {
     throw new HttpError(400, `${where ? `${where}: ` : ''}Bitte gib einen Namen mit höchstens ${MAX_NAME_LENGTH} Zeichen ein.`);
   }
   return clean;
 }
 
+// Numbers come as JSON numbers or as plain decimal strings ("12.5", with `comma` also "4,5"),
+// never as "0x10", "1e3" or " ".
+function toNumber(value, comma = false) {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return NaN;
+  const s = value.trim();
+  return (comma ? /^\d+([.,]\d+)?$/ : /^\d+(\.\d+)?$/).test(s) ? Number(s.replace(',', '.')) : NaN;
+}
+
 // Hours per month a member can contribute; half hours are allowed.
 function requireHours(value, label = 'Die Stunden') {
-  const n = typeof value === 'string' && value.trim() !== '' ? Number(value.replace(',', '.')) : value;
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > MAX_HOURS) {
+  const n = toNumber(value, true);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_HOURS) {
     throw new HttpError(400, `${label} müssen zwischen 0 und ${MAX_HOURS} liegen.`);
   }
   return Math.round(n * 2) / 2;
 }
 
 function requireAmount(value, label) {
-  const n = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) {
+  const n = toNumber(value);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) {
     throw new HttpError(400, `${label} muss eine Zahl zwischen 0 und ${formatAmount(MAX_AMOUNT)} sein.`);
   }
   return round2(n);
@@ -127,11 +163,22 @@ async function checkPin(pin, stored) {
   return key.length === expected.length && crypto.timingSafeEqual(key, expected);
 }
 
-async function setPin(user, pin, pinHash) {
-  user.pinHash = pinHash || await hashPin(pin);
+// `hash`: computed before entering the write queue, so scrypt never holds up other writes.
+// `start`: a start PIN the admin handed out; otherwise only the shared default PIN counts as one.
+async function setPin(user, pin, { hash, start } = {}) {
+  user.pinHash = hash || await hashPin(pin);
   user.pinVersion = (user.pinVersion || 0) + 1;
-  user.defaultPin = pin === (isAdminId(user.id) ? ADMIN_DEFAULT_PIN : DEFAULT_PIN);
+  user.defaultPin = start !== undefined ? start : pin === (isAdminId(user.id) ? ADMIN_DEFAULT_PIN : DEFAULT_PIN);
   delete user.pin;
+}
+
+// Start PIN for a member the admin adds: random, never the shared 1234 or 0000.
+function randomStartPin() {
+  let pin;
+  do {
+    pin = String(crypto.randomInt(0, 10 ** START_PIN_DIGITS)).padStart(START_PIN_DIGITS, '0');
+  } while (pin === DEFAULT_PIN || pin === ADMIN_DEFAULT_PIN);
+  return pin;
 }
 
 // Database file
@@ -174,50 +221,76 @@ async function writeDatabase(data) {
   await fs.rename(tmp, DATA_FILE);
 }
 
-// Keeps a copy of the database as it was before the first change of each day.
-async function backupOncePerDay() {
-  const day = new Date().toISOString().slice(0, 10);
-  const target = path.join(BACKUP_DIR, `database-${day}.json`);
+// Keeps a copy of the database as it was before the first change of each day (UTC date,
+// kept 60 days) and of each hour (UTC, kept 48 hours), so a busy evening has restore points.
+async function makeBackups() {
+  const stamp = new Date().toISOString();
+  try {
+    await backupOnce(`database-${stamp.slice(0, 10)}.json`, /^database-\d{4}-\d{2}-\d{2}\.json$/, DAILY_BACKUPS_TO_KEEP);
+    await backupOnce(`database-${stamp.slice(0, 10)}-${stamp.slice(11, 13)}h.json`, /^database-\d{4}-\d{2}-\d{2}-\d{2}h\.json$/, HOURLY_BACKUPS_TO_KEEP);
+  } catch (error) {
+    // A failing backup (e.g. a full disk) must not stop the bids.
+    console.error('Error writing backup:', error);
+  }
+}
+
+async function backupOnce(name, pattern, keep) {
+  const target = path.join(BACKUP_DIR, name);
   try {
     await fs.access(target);
     return;
   } catch {
-    // no backup for today yet
+    // no backup for this day or hour yet
   }
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
+  await fs.mkdir(BACKUP_DIR, { recursive: true, mode: 0o700 });
   await fs.copyFile(DATA_FILE, target);
-  const daily = (await fs.readdir(BACKUP_DIR))
-    .filter(f => /^database-\d{4}-\d{2}-\d{2}\.json$/.test(f))
-    .sort();
-  for (const old of daily.slice(0, -DAILY_BACKUPS_TO_KEEP)) {
+  const files = (await fs.readdir(BACKUP_DIR)).filter(f => pattern.test(f)).sort();
+  for (const old of files.slice(0, -keep)) {
     await fs.unlink(path.join(BACKUP_DIR, old));
   }
 }
 
 async function backupBeforeImport() {
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
+  await fs.mkdir(BACKUP_DIR, { recursive: true, mode: 0o700 });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   await fs.copyFile(DATA_FILE, path.join(BACKUP_DIR, `database-${stamp}-before-import.json`));
 }
 
 // All writes run one after another through this queue. Every change re-reads the
 // file, so concurrent requests can never overwrite each other's bids.
+// `change(data, log)` records audit lines with log(event, details); they are written
+// after the database, still inside the queue, so the log has the order of the changes.
 let writeQueue = Promise.resolve();
 
 function mutate(change, { backup = true } = {}) {
   const run = writeQueue.then(async () => {
     const data = await readDatabase();
-    const result = await change(data);
+    const events = [];
+    const result = await change(data, (event, details) => events.push([event, details]));
     data.rev = (data.rev || 0) + 1;
-    if (backup) await backupOncePerDay();
+    if (backup) await makeBackups();
     await writeDatabase(data);
+    for (const [event, details] of events) {
+      await audit(event, { rev: data.rev, ...details });
+    }
     return { data, result };
   });
   writeQueue = run.catch(() => {});
   return run;
 }
 
-// Append-only log of every change, so each bid can be traced and restored.
+// Who made a request: address, browser and the start of the device id, so a bid in
+// somebody else's name can be traced to a device. Never the PIN.
+function requestInfo(req) {
+  const device = deviceIdOf(req.get('X-Device')) || deviceIdOf(req.body && req.body.device);
+  return {
+    ip: req.ip,
+    ua: String(req.get('User-Agent') || '').slice(0, 200),
+    device: device ? device.slice(0, 8) : undefined
+  };
+}
+
+// Append-only log of every change and login, so each bid can be traced and restored.
 async function audit(event, details = {}) {
   const line = JSON.stringify({ at: new Date().toISOString(), event, ...details });
   try {
@@ -265,7 +338,15 @@ let trustKey;
 async function loadSessionSecret() {
   try {
     sessionSecret = await fs.readFile(SECRET_FILE);
-  } catch {
+  } catch (error) {
+    // Only a missing file is replaced; a file we cannot read stops the start
+    // instead of silently logging everybody out.
+    if (error.code !== 'ENOENT') throw error;
+    sessionSecret = null;
+  }
+  // An empty or short secret would make sessions forgeable.
+  if (!sessionSecret || sessionSecret.length < 32) {
+    if (sessionSecret) console.warn('session-secret was too short, created a new one (everybody has to log in again).');
     sessionSecret = crypto.randomBytes(32);
     await fs.writeFile(SECRET_FILE, sessionSecret, { mode: 0o600 });
   }
@@ -478,6 +559,7 @@ function summary(data) {
   const hours = Object.values(data.hours).filter(h => h > 0);
   return {
     rev: data.rev || 0,
+    boot: BOOT,
     totalRaised: round2(amounts.reduce((sum, a) => sum + a, 0)),
     targetAmount: data.targetAmount,
     contributorCount: amounts.length,
@@ -568,10 +650,12 @@ api.post('/login', handle(async (req, res) => {
   if (!ok) {
     const message = registerFailedLogin(key);
     console.log(`[login] wrong PIN for ${user.id} from ${req.ip}${deviceId ? ` device ${deviceId.slice(0, 6)}` : ''}${trusted ? ' (trusted)' : ''}`);
+    await audit('login_failed', { userId: user.id, trusted, ...requestInfo(req) });
     throw new HttpError(401, message);
   }
   if (!trusted) returnAccountAttempt(user.id);
   deviceFailures.delete(key);
+  await audit('login', { userId: user.id, trusted, ...requestInfo(req) });
   res.json({ ...issueSession(user), trust: deviceId ? issueTrust(user, deviceId) : undefined });
 }));
 
@@ -579,60 +663,78 @@ api.post('/login', handle(async (req, res) => {
 
 const memberOnly = authenticate('member');
 
+// Write budget per member, so one session cannot flood the shared write queue.
+const writeBudgets = new Map(); // userId -> { tokens, at }
+
+function limitWrites(req, res, next) {
+  const now = Date.now();
+  const budget = writeBudgets.get(req.user.id) || { tokens: WRITE_LIMIT.burst, at: now };
+  budget.tokens = Math.min(WRITE_LIMIT.burst, budget.tokens + (now - budget.at) / WRITE_LIMIT.refillMs);
+  budget.at = now;
+  writeBudgets.set(req.user.id, budget);
+  if (budget.tokens < 1) {
+    next(new HttpError(429, 'Zu viele Änderungen auf einmal. Warte einen Moment.', WRITE_LIMIT.refillMs));
+    return;
+  }
+  budget.tokens -= 1;
+  next();
+}
+
 api.get('/me', memberOnly, handle(async (req, res) => {
   res.json(memberView(req.data, req.user));
 }));
 
 // The server adds the step itself, so fast or parallel clicks are never lost.
-api.post('/me/contribution', memberOnly, handle(async (req, res) => {
+api.post('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
   const delta = req.body && req.body.delta;
   if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_STEP) {
     throw new HttpError(400, 'Ungültiger Betrag.');
   }
-  const { data, result } = await mutate((data) => {
+  const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     const from = data.contributions[user.id] || 0;
     const to = round2(Math.min(MAX_AMOUNT, Math.max(0, from + delta)));
     setContribution(data, user.id, to);
-    return { user, from, to };
+    log('bid', { userId: user.id, name: user.name, from, to, ...requestInfo(req) });
+    return user;
   });
-  await audit('bid', { userId: result.user.id, name: result.user.name, from: result.from, to: result.to });
-  res.json(memberView(data, result.user));
+  res.json(memberView(data, result));
 }));
 
-api.post('/me/contribution/withdraw', memberOnly, handle(async (req, res) => {
-  const { data, result } = await mutate((data) => {
+api.post('/me/contribution/withdraw', memberOnly, limitWrites, handle(async (req, res) => {
+  const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     const from = data.contributions[user.id] || 0;
     setContribution(data, user.id, 0);
-    return { user, from };
+    log('withdraw', { userId: user.id, name: user.name, from, to: 0, ...requestInfo(req) });
+    return user;
   });
-  await audit('withdraw', { userId: result.user.id, name: result.user.name, from: result.from, to: 0 });
-  res.json(memberView(data, result.user));
+  res.json(memberView(data, result));
 }));
 
 // Hours are set as an absolute value from a text field (not counted up like bids).
-api.put('/me/hours', memberOnly, handle(async (req, res) => {
+api.put('/me/hours', memberOnly, limitWrites, handle(async (req, res) => {
   const hours = requireHours(req.body && req.body.hours);
-  const { data, result } = await mutate((data) => {
+  const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     const from = data.hours[user.id] || 0;
     setHours(data, user.id, hours);
-    return { user, from };
-  });
-  await audit('hours', { userId: result.user.id, name: result.user.name, from: result.from, to: hours });
-  res.json(memberView(data, result.user));
-}));
-
-api.put('/me/pin', memberOnly, handle(async (req, res) => {
-  const pin = requirePin(req.body && req.body.pin);
-  const deviceId = deviceIdOf(req.body.device);
-  const { data, result } = await mutate(async (data) => {
-    const user = findUserOrLogout(data, req.user.id);
-    await setPin(user, pin);
+    log('hours', { userId: user.id, name: user.name, from, to: hours, ...requestInfo(req) });
     return user;
   });
-  await audit('pin_changed', { userId: result.id, by: 'self' });
+  res.json(memberView(data, result));
+}));
+
+api.put('/me/pin', memberOnly, limitWrites, handle(async (req, res) => {
+  const pin = requirePin(req.body && req.body.pin);
+  const deviceId = deviceIdOf(req.body.device);
+  const hash = await hashPin(pin);
+  const { data, result } = await mutate(async (data, log) => {
+    const user = findUserOrLogout(data, req.user.id);
+    await setPin(user, pin, { hash });
+    log('pin_changed', { userId: user.id, by: 'self', ...requestInfo(req) });
+    return user;
+  });
   res.json({
     ...memberView(data, result),
     session: issueSession(result),
@@ -648,51 +750,60 @@ api.get('/admin/data', adminOnly, handle(async (req, res) => {
   res.json(adminView(req.data));
 }));
 
+// New members get a random start PIN, shown to the admin once in `added.startPin`
+// (never stored in plain text or logged). An explicit `pin` in the request is used as is.
 api.post('/admin/users', adminOnly, handle(async (req, res) => {
   const name = requireName(req.body && req.body.name);
-  const pin = req.body && req.body.pin ? requirePin(req.body.pin) : DEFAULT_PIN;
-  const { data, result } = await mutate(async (data) => {
+  const chosen = req.body && req.body.pin ? requirePin(req.body.pin) : null;
+  const pin = chosen || randomStartPin();
+  const hash = await hashPin(pin);
+  const { data, result } = await mutate(async (data, log) => {
     if (data.users.some(u => !isAdminId(u.id) && sameName(u.name, name))) {
       throw new HttpError(409, `„${name}“ ist schon eingetragen.`);
     }
     const nextId = idGenerator(id => data.users.some(u => u.id === id));
     const user = { id: nextId(), name };
-    await setPin(user, pin);
+    await setPin(user, pin, { hash, start: chosen ? undefined : true });
     data.users.push(user);
+    log('user_added', { userId: user.id, name: user.name, ...requestInfo(req) });
     return user;
   });
-  await audit('user_added', { userId: result.id, name: result.name });
-  res.json({ ...adminView(data), added: { id: result.id, name: result.name, defaultPin: result.defaultPin } });
+  res.json({
+    ...adminView(data),
+    added: { id: result.id, name: result.name, defaultPin: result.defaultPin, startPin: chosen ? undefined : pin }
+  });
 }));
 
 api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
   const { userId } = req.params;
   if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto kann nicht gelöscht werden.');
-  const { data, result } = await mutate((data) => {
+  const { data } = await mutate((data, log) => {
     const user = data.users.find(u => u.id === userId);
     if (!user) throw new HttpError(404, 'Dieses Mitglied ist schon gelöscht.');
-    const contribution = data.contributions[userId] || 0;
-    const hours = data.hours[userId] || 0;
+    const contribution = own(data.contributions, userId) || 0;
+    const hours = own(data.hours, userId) || 0;
     data.users = data.users.filter(u => u.id !== userId);
     delete data.contributions[userId];
     delete data.hours[userId];
-    return { user, contribution, hours };
+    log('user_deleted', { userId, name: user.name, contribution, hours, ...requestInfo(req) });
   });
-  await audit('user_deleted', { userId, name: result.user.name, contribution: result.contribution, hours: result.hours });
+  clearFailedLogins(userId);
+  writeBudgets.delete(userId);
   res.json(adminView(data));
 }));
 
 // The admin can set the PIN of every account, including their own.
 api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
   const pin = requirePin(req.body && req.body.pin);
-  const { data, result } = await mutate(async (data) => {
+  const hash = await hashPin(pin);
+  const { data, result } = await mutate(async (data, log) => {
     const user = data.users.find(u => u.id === req.params.userId);
     if (!user) throw new HttpError(404, 'Dieses Mitglied gibt es nicht mehr.');
-    await setPin(user, pin);
+    await setPin(user, pin, { hash });
+    log('pin_changed', { userId: user.id, by: 'admin', ...requestInfo(req) });
     return user;
   });
   clearFailedLogins(result.id);
-  await audit('pin_changed', { userId: result.id, by: 'admin' });
   const deviceId = isAdminId(result.id) ? deviceIdOf(req.body.device) : null;
   res.json({
     ...adminView(data),
@@ -704,12 +815,10 @@ api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
 api.put('/admin/target', adminOnly, handle(async (req, res) => {
   const targetAmount = requireAmount(req.body && req.body.targetAmount, 'Der Bedarf');
   if (targetAmount <= 0) throw new HttpError(400, 'Der Bedarf muss größer als 0 sein.');
-  const { data, result } = await mutate((data) => {
-    const from = data.targetAmount;
+  const { data } = await mutate((data, log) => {
+    log('target_changed', { from: data.targetAmount, to: targetAmount, ...requestInfo(req) });
     data.targetAmount = targetAmount;
-    return { from };
   });
-  await audit('target_changed', { from: result.from, to: targetAmount });
   res.json(adminView(data));
 }));
 
@@ -728,9 +837,16 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
 // Replaces all members and bids (the admin account stays). Members are matched to
 // existing ones by id or name: without a PIN in the file they keep their PIN,
 // new members get the default PIN.
-api.post('/admin/import', adminOnly, handle(async (req, res) => {
+// Ids from a file: the usual pattern, but never the admin's or a name like "constructor"
+// that every JavaScript object already has.
+const usableId = (id) => ID_PATTERN.test(id) && !isAdminId(id) && !(id in Object.prototype);
+
+api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
   const body = req.body || {};
   if (!Array.isArray(body.users)) throw new HttpError(400, 'Die Datei enthält keine Mitgliederliste.');
+  if (body.users.length > MAX_IMPORT_ENTRIES) {
+    throw new HttpError(400, `Die Datei enthält mehr als ${MAX_IMPORT_ENTRIES} Einträge.`);
+  }
   const contributionsIn = body.contributions && typeof body.contributions === 'object' ? body.contributions : {};
   const hoursIn = body.hours && typeof body.hours === 'object' ? body.hours : {};
   const hasTarget = body.targetAmount !== undefined && body.targetAmount !== null && body.targetAmount !== '';
@@ -742,13 +858,13 @@ api.post('/admin/import', adminOnly, handle(async (req, res) => {
       const where = Number.isInteger(u.line) ? `Zeile ${u.line}` : `Eintrag ${i + 1}`;
       const id = u.id !== undefined && u.id !== null ? String(u.id) : '';
       const pinGiven = u.pin !== undefined && u.pin !== null && u.pin !== '';
-      const rawAmount = u.contribution !== undefined ? u.contribution : contributionsIn[id];
+      const rawAmount = u.contribution !== undefined ? u.contribution : own(contributionsIn, id);
       const amountGiven = rawAmount !== undefined && rawAmount !== null && rawAmount !== '';
-      const rawHours = u.hours !== undefined ? u.hours : hoursIn[id];
+      const rawHours = u.hours !== undefined ? u.hours : own(hoursIn, id);
       const hoursGiven = rawHours !== undefined && rawHours !== null && rawHours !== '';
       return {
         where,
-        id: ID_PATTERN.test(id) ? id : null,
+        id: usableId(id) ? id : null,
         name: requireName(u.name, where),
         pin: pinGiven ? requirePin(String(u.pin), where) : null,
         contribution: amountGiven ? requireAmount(rawAmount, `${where}: Der Betrag`) : 0,
@@ -760,7 +876,7 @@ api.post('/admin/import', adminOnly, handle(async (req, res) => {
     if (twin !== i) throw new HttpError(400, `„${entry.name}“ steht doppelt in der Datei (${entries[twin].where} und ${entry.where}).`);
   });
 
-  const { data, result } = await mutate(async (data) => {
+  const { data, result } = await mutate(async (data, log) => {
     await backupBeforeImport();
     const admin = data.users.find(u => isAdminId(u.id));
     const previous = data.users.filter(u => !isAdminId(u.id));
@@ -781,21 +897,28 @@ api.post('/admin/import', adminOnly, handle(async (req, res) => {
       if (entry.pin && !(match && await checkPin(entry.pin, match.pinHash))) {
         await setPin(user, entry.pin);
       } else if (!match) {
-        await setPin(user, DEFAULT_PIN, defaultHash);
+        await setPin(user, DEFAULT_PIN, { hash: defaultHash });
       }
       users.push(user);
       if (entry.contribution > 0) contributions[user.id] = entry.contribution;
       if (entry.hours > 0) hours[user.id] = entry.hours;
     }
 
+    const before = summary(data);
     data.users = [admin, ...users];
     data.contributions = contributions;
     data.hours = hours;
     if (targetAmount) data.targetAmount = targetAmount;
+    const after = summary(data);
+    log('import', {
+      users: users.length,
+      before: { users: previous.length, totalRaised: before.totalRaised, totalHours: before.totalHours },
+      totalRaised: after.totalRaised,
+      totalHours: after.totalHours,
+      ...requestInfo(req)
+    });
     return { count: users.length };
   });
-  const totals = summary(data);
-  await audit('import', { users: result.count, totalRaised: totals.totalRaised, totalHours: totals.totalHours });
   res.json({ ...adminView(data), imported: result.count });
 }));
 
@@ -810,11 +933,14 @@ app.use((err, req, res, next) => {
     if (err.retryAfterMs) res.set('Retry-After', String(Math.ceil(err.retryAfterMs / 1000)));
     return res.status(err.status).json({ error: err.message });
   }
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ error: 'Ungültige Anfrage.' });
-  }
   if (err.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'Die Datei ist zu groß.' });
+    return res.status(413).json({ error: req.path === IMPORT_PATH ? 'Die Datei ist zu groß.' : 'Ungültige Anfrage.' });
+  }
+  // Other client errors (broken JSON, unknown charset, aborted upload, malformed URL):
+  // a short answer and no stack trace in the log.
+  const status = err.status || err.statusCode;
+  if (status >= 400 && status < 500) {
+    return res.status(status).json({ error: 'Ungültige Anfrage.' });
   }
   console.error('Unexpected error:', err);
   res.status(500).json({ error: 'Serverfehler. Bitte versuche es noch einmal.' });
