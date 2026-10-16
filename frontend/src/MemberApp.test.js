@@ -8,15 +8,31 @@ const me = (contribution, rev, hours = 11.5) => ({
   user: { id: '7', name: 'Anna', defaultPin: false }, contribution, hours
 });
 
-// Fake server: GET /me answers the current state, PUT stores the value.
-function server({ failFirst = false } = {}) {
+const fail = (status, error) => Promise.resolve({ ok: false, status, headers: { get: () => null }, json: () => Promise.resolve({ error }) });
+
+// Fake server: GET /me answers the current state, PUT stores the value. With `hold`, every
+// PUT waits until the test calls the function it was given (`release`).
+function server({ failFirst = false, errorFirst = null, hold = null } = {}) {
   let state = me(1585, 1);
   let failed = !failFirst;
+  let errored = !errorFirst;
   global.fetch = jest.fn((url, options = {}) => {
+    if (url === '/api/public') return respond({ ...state, members: [{ id: '7', name: 'Anna' }] });
     if (options.method === 'PUT') {
       if (!failed) {
         failed = true;
         return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      if (!errored) {
+        errored = true;
+        return fail(503, errorFirst);
+      }
+      if (hold) {
+        return new Promise(resolve => hold(() => {
+          const body = JSON.parse(options.body);
+          state = me(body.amount, state.rev + 1, state.hours);
+          resolve(respond(state));
+        }));
       }
       const body = JSON.parse(options.body);
       if (url === '/api/me/contribution') state = me(body.amount, state.rev + 1, state.hours);
@@ -145,4 +161,69 @@ test('a bid without an answer is sent again', async () => {
   expect(await screen.findByText('Dein Beitrag ist jetzt 15.850 €.')).toBeInTheDocument();
   expect(puts()).toEqual([['/api/me/contribution', { amount: 15850 }], ['/api/me/contribution', { amount: 15850 }]]);
   jest.useRealTimers();
+});
+
+test('desktop: after a failed save the field keeps the focus, and keys typed elsewhere still reach it', async () => {
+  server({ errorFirst: 'Der Server ist gerade ausgelastet.' });
+  render(<MemberApp />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Beitrag ändern' }));
+  const input = screen.getByLabelText('Dein Beitrag in Euro');
+  type(input, ['0']);
+  fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
+  expect(await screen.findByText('Nicht gespeichert. Der Server ist gerade ausgelastet.')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('ausgelastet');
+  expect(input).toHaveFocus();
+  input.blur();
+  fireEvent.keyDown(document.body, { key: 'Backspace' });
+  expect(input).toHaveValue('1.585');
+  expect(input).toHaveFocus();
+  type(input, ['1']);
+  expect(input).toHaveValue('15.851');
+  // Delete and cursor keys never move the cursor away from the end.
+  expect(fireEvent.keyDown(input, { key: 'Delete' })).toBe(false);
+  expect(fireEvent.keyDown(input, { key: 'Home', ctrlKey: true })).toBe(false);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(await screen.findByText('Dein Beitrag ist jetzt 15.851 €.')).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('15.851');
+});
+
+test('a save that ends after its sheet was closed does not close or block the next sheet', async () => {
+  let release;
+  server({ hold: (fn) => { release = fn; } });
+  render(<MemberApp />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Beitrag ändern' }));
+  type(screen.getByLabelText('Dein Beitrag in Euro'), ['Backspace', 'Backspace', 'Backspace']);
+  fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
+  expect(await screen.findByRole('button', { name: 'Wird gespeichert …' })).toBeDisabled();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Stunden ändern' }));
+  const hours = screen.getByLabelText('Deine Stunden pro Monat');
+  type(hours, ['Backspace', 'Backspace', 'Backspace', 'Backspace', '8']);
+  expect(hours).toHaveValue('8');
+  expect(screen.getByRole('button', { name: /Speichern/ })).toBeDisabled(); // the bid is still on its way
+
+  await act(async () => { release(); });
+  expect(await screen.findByText('Dein Beitrag ist jetzt 1 €.')).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Speichern/ })).toBeEnabled();
+  expect(screen.getByTestId('sheet-total')).toHaveTextContent('143,5 h');
+});
+
+test('a save that ends after logging out changes nothing on the next page', async () => {
+  let release;
+  server({ hold: (fn) => { release = fn; } });
+  render(<MemberApp />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Beitrag ändern' }));
+  type(screen.getByLabelText('Dein Beitrag in Euro'), ['0']);
+  fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
+  await screen.findByRole('button', { name: 'Wird gespeichert …' });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
+  expect(await screen.findByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
+  await act(async () => { release(); });
+  await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+  expect(screen.queryByText(/Dein Beitrag ist jetzt/)).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
 });

@@ -228,12 +228,31 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [mode, toggleMode] = useAmountMode('franzwerk.mode');
   const [sheet, setSheet] = useState(null);
-  const [saving, setSaving] = useState(false);
+  // The sheet whose value is being saved. It can be closed before the answer comes.
+  const [saving, setSaving] = useState(null);
   const [pinOpen, setPinOpen] = useState(false);
   const sendingRef = useRef(false);
   const moneyButton = useRef(null);
   const hoursButton = useRef(null);
   const lastSheet = useRef(null);
+  const sheetRef = useRef(null);
+  const pendingBack = useRef(false);
+  const alive = useRef(true);
+
+  // The open sheet, also for the history and save callbacks, which run later.
+  const showSheet = useCallback((next) => {
+    sheetRef.current = next;
+    setSheet(next);
+  }, []);
+
+  // A save that ends after this page is gone (logged out, another member on this phone)
+  // must not touch what is on screen then.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   // The back gesture leaves the member page and logs out. A fresh entry is pushed on
   // every start (also after a reload), so going back is always a same-page step.
@@ -242,12 +261,22 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     if (isMemberEntry()) window.history.replaceState(null, '');
     window.history.pushState({ member: true }, '');
     const onPop = () => {
-      if (!isMemberEntry()) onLogout();
-      else if (!window.history.state.sheet) setSheet(null);
+      if (!isMemberEntry()) {
+        onLogout();
+      } else if (pendingBack.current) {
+        // The back step of closeSheet arrived. A sheet opened in the meantime gets its entry now.
+        pendingBack.current = false;
+        if (sheetRef.current) window.history.pushState({ member: true, sheet: true }, '');
+      } else if (!window.history.state.sheet) {
+        showSheet(null);
+      } else if (!sheetRef.current) {
+        // Forward onto the entry of a sheet that is closed: make it a plain page entry again.
+        window.history.replaceState({ member: true }, '');
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [onLogout]);
+  }, [onLogout, showSheet]);
 
   // After the sheet closes, the focus goes back to the button that opened it.
   useEffect(() => {
@@ -283,24 +312,32 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
   // A banner from the last change would cover the sheet's close button.
   const openSheet = (kind) => {
     clearNotice();
-    window.history.pushState({ member: true, sheet: true }, '');
-    setSheet({ kind, keypad: usesKeypad() });
+    if (!pendingBack.current) {
+      if (window.history.state && window.history.state.sheet) window.history.replaceState({ member: true, sheet: true }, '');
+      else window.history.pushState({ member: true, sheet: true }, '');
+    }
+    showSheet({ kind, keypad: usesKeypad() });
   };
 
+  // history.back() takes effect a moment later; until then a new sheet waits for its entry.
   const closeSheet = useCallback(() => {
-    setSheet(null);
-    if (window.history.state && window.history.state.sheet) window.history.back();
-  }, []);
+    showSheet(null);
+    if (!pendingBack.current && window.history.state && window.history.state.sheet) {
+      pendingBack.current = true;
+      window.history.back();
+    }
+  }, [showSheet]);
 
   // The bid and the hours are absolute values, so a request without an answer can simply
   // go out again: the server stores the same value twice and nothing is doubled.
   const save = useCallback(async (value) => {
-    const kind = sheet && sheet.kind;
-    if (!kind) return;
+    const started = sheet;
+    if (!started || sendingRef.current) return;
+    const { kind } = started;
     const path = kind === 'money' ? '/me/contribution' : '/me/hours';
     const body = kind === 'money' ? { amount: value } : { hours: value };
     sendingRef.current = true;
-    setSaving(true);
+    setSaving(started);
     let saved = null;
     let failure = null;
     try {
@@ -316,11 +353,12 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     } catch (err) {
       failure = err;
     }
+    if (!alive.current) return;
     sendingRef.current = false;
-    setSaving(false);
+    setSaving(null);
     if (saved) {
       apply(saved);
-      closeSheet();
+      if (sheetRef.current === started) closeSheet();
       if (kind === 'hours') showNotice('ok', `Dein Stundenbeitrag ist jetzt ${formatHours(saved.hours)} h.`);
       else if (saved.contribution > 0) showNotice('ok', `Dein Beitrag ist jetzt ${formatNumber(inMode(saved.contribution, mode))} €.`);
       else showNotice('ok', 'Dein Beitrag ist zurückgezogen.');
@@ -406,7 +444,16 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
       </div>
 
       {sheet && (
-        <AmountSheet kind={sheet.kind} keypad={sheet.keypad} me={me} mode={mode} busy={saving} onSave={save} onClose={closeSheet} />
+        <AmountSheet
+          kind={sheet.kind}
+          keypad={sheet.keypad}
+          me={me}
+          mode={mode}
+          busy={saving === sheet}
+          waiting={saving !== null && saving !== sheet}
+          onSave={save}
+          onClose={closeSheet}
+        />
       )}
     </>
   );

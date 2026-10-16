@@ -427,10 +427,12 @@
     font-size: 1.15rem;
   }
 
+  /* No pointer events while disabled: a click on it then reaches the sheet, which keeps the
+     focus in the text field (a disabled button gets no mousedown, but still takes the focus). */
   .save:disabled {
     background: rgb(255 255 255 / 0.15);
     color: rgb(255 255 255 / 0.5);
-    cursor: not-allowed;
+    pointer-events: none;
   }
 
   /* Banner at the top of the screen, below the safe area. */

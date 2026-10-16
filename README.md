@@ -1,7 +1,9 @@
 # Bietrunde – FRANZ!werk Tübingen
 
 Members open https://franz.uber.space, pick their name, log in with their PIN and set their bid
-(euros, counted up with buttons) and their hours per month (typed in, no target).
+(euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a keypad on
+phones and tablets, a text field on computers. A text button switches the display between netto and
+brutto (× 1.19); what is stored is always netto.
 Admins manage members, PINs, the target ("Bedarf") and import/export at https://franz.uber.space/admin.
 
 ## Layout on the Uberspace
@@ -16,7 +18,7 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 
 | File | Purpose |
 |---|---|
-| `database.json` | members (PINs only as scrypt hashes), bids (`contributions`), hours per month (`hours`), target. Written atomically. |
+| `database.json` | members (PINs only as scrypt hashes), bids netto (`contributions`), hours per month (`hours`), target netto. Written atomically. |
 | `audit.log` | one JSON line per change (bid, withdraw, PIN change, import, …) and per login, with `rev`, IP address, browser (`ua`) and the first 8 characters of the device id – every bid can be traced to a device. Never contains PINs. |
 | `backups/database-YYYY-MM-DD.json` | state before the first change of each day (UTC date), 60 days kept |
 | `backups/database-YYYY-MM-DD-HHh.json` | state before the first change of each hour (UTC), 48 hours kept |
@@ -42,7 +44,7 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 - Each member can make 50 changes at once, then 10 per second, so a script cannot flood the write queue.
 - Request bodies are limited to 16 kB (the import: 1 MB, read only after the admin session was checked).
 - The pages send a strict Content-Security-Policy (no inline scripts; `frontend/.env` keeps the build free of them), refuse to be shown in frames of other sites and set `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`frontend/public/.htaccess`). The API sets its own headers.
-- All writes go through one queue and the server adds bid steps itself, so parallel clicks are never lost. Each bid step carries a request id: when a page gets no answer it sends the step again with the same id, and the server counts it only once. The audit log is written inside that queue, in the order of the changes.
+- All writes go through one queue, and the audit log is written inside it, in the order of the changes. A bid is sent as the new total (netto), not as a step, so a page that gets no answer simply sends it again and nothing is doubled. Pages loaded before the October 2026 update still send steps with a request id; the server keeps accepting those and counts each step once.
 - Admin pages from before an update (no device id) still get the start PIN 1234 when they add a member, because that is what they show.
 
 ## Common tasks

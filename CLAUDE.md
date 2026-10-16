@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (counted up with buttons) and the hours per month they can contribute (typed in). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. `README.md` has the operations guide (data folder, backups, PIN reset, restore).
+"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. `README.md` has the operations guide (data folder, backups, PIN reset, restore).
 
 - `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
 - `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
@@ -68,8 +68,8 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - **Audit lines are recorded with `log(event, details)` inside `change`**; `mutate` writes them after the database, still inside the queue, with the new `rev`. Add `...requestInfo(req)` (ip, ua, device prefix) to every line. Login and failed login are logged with `audit()` directly (they change no data).
 - **scrypt never runs inside the queue:** routes hash a new PIN first and pass it as `setPin(user, pin, { hash })`. Only `migrateDatabase` and the import still hash inside.
 - Member write routes go through `limitWrites` (per-member budget: 50, then 10 per second, else 429).
-- **Bid steps are idempotent per request id:** `POST /me/contribution {delta, request}`; the last 20 ids per member are kept in `data.requests`, and the frontend retries a step without an answer with the same id (`flush` in MemberApp.js, up to 3 times).
-- **Bids are deltas today.** `POST /me/contribution {delta}` adds to the stored bid on the server. The frontend (`MemberPage.flush`) collects clicks in `queueRef` while a request is in flight and sends their sum next, which makes fast or parallel clicks safe (tested with 200 parallel clicks). Hours are absolute (`PUT /me/hours`) and rounded to half hours on the server. The new bidding flow replaces the delta with an absolute value; see "New bidding flow".
+- **Bids and hours are absolute values:** `PUT /me/contribution {amount}` (netto, rounded to cents) and `PUT /me/hours {hours}` (rounded to 0.1 h). Writing the same value twice changes nothing, so `MemberPage.save` retries a request without an answer (status 0) up to 3 times.
+- **Old pages:** `POST /me/contribution {delta, request}` and `POST /me/contribution/withdraw` stay only for pages loaded before the October 2026 update. Their steps are idempotent per request id (the last 20 per member in `data.requests`) and limited to `MAX_STEP`. The current frontend does not use them.
 - **Every state response carries `rev` and `boot`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp, via `isNewer` in `lib.js`) drops any response whose `rev` is older than what it shows, unless `boot` changed (server restart, e.g. after restoring a backup with a lower `rev`). New endpoints that return state must include `summary(data)`.
 
 ### Sessions and login
@@ -100,14 +100,15 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 ### Frontend structure
 
-- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting, `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
-- `ui.js`: shared components (`Band` header, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice`).
+- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`, `useAmountMode` stores the display mode per device), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
+- `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top).
+- `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview; `usesKeypad()` picks the keypad (`pointer: coarse`) or the text field.
 - `MemberApp.js`:
   - `FrontPage`: name list, search, PIN step.
-  - `MemberPage`: bid, `HoursCard`, PIN change.
-  - Both use the History API so the phone's back gesture works: the PIN step pushes an entry, and leaving the member page logs out.
-- Polling intervals: front page 15 s (paused in the PIN step), member page 10 s (skipped while a bid is being sent), admin 15 s.
-- Styling: Tailwind with a custom palette in German names (`gelb`, `werkblau`, `blau`, `tinte`, `ziegel`, `papier`, …) and component classes in `index.css` (`.btn-*`, `.card`, `.field`, `.bid-step`, `.chip`). The root font size is 106.25 %, and inputs stay at 16 px or more so iOS does not zoom.
+  - `MemberPage`: bid and hours card, the sheet, PIN change.
+  - Both use the History API so the phone's back gesture works: the PIN step pushes an entry, an open sheet pushes one (back closes it), and leaving the member page logs out.
+- Polling intervals: front page 15 s (paused in the PIN step), member page 10 s (skipped while saving), admin 15 s.
+- Styling: Tailwind with a custom palette in German names (`gelb`, `werkblau`, `blau`, `tinte`, `ziegel`, `papier`, `gruen`, …) and component classes in `index.css` (`.btn-*`, `.card`, `.field`, `.wrap` for the 16 px gutter, `.topbar*`, `.stat-*`, `.big-btn`, `.text-button`, `.sheet*`, `.key`, `.save`, `.notice*`, `.collapse-head`). The root font size is 106.25 %, and inputs stay at 16 px or more so iOS does not zoom.
 - The layout must work down to 320 px width. Check 320, 360 and 375 px, not just 390 px.
 
 ### Rules duplicated between client and server
@@ -117,12 +118,13 @@ If you change one of these, update both sides:
 | Rule | Server | Client |
 |---|---|---|
 | PIN 4–6 digits | `PIN_PATTERN` | `isPin`, `csv.js` |
-| Max. hours 744 | `MAX_HOURS` | `HoursCard` |
+| Max. hours 744 | `MAX_HOURS` | `MAX_HOURS` in `entry.js` |
 | Device id: 22 base64url characters | `DEVICE_PATTERN` | `DEVICE_PATTERN`, `randomDeviceId` in `lib.js` |
 | Name max. 60 characters | `MAX_NAME_LENGTH` | `maxLength` in `AdminApp` |
 | Start PIN 1234, admin PIN 0000 | `DEFAULT_PIN`, `ADMIN_DEFAULT_PIN` | texts in `AdminApp` |
-| Max. delta per request 10,000 € (goes away with the new bidding flow) | `MAX_STEP` | `flush` sends the sum of all clicks queued during one request, which must stay below it |
-| Hours precision 0.5 h (0.1 h with the new bidding flow) | `requireHours` | `HoursCard` |
+| Max. bid 1,000,000 € netto | `MAX_AMOUNT` | `KINDS.money.maxInt` (6 digits) in `entry.js` |
+| Cents for euros, 0.1 h for hours | `requireAmount`, `requireHours` | `KINDS` in `entry.js`, `round1` in `AmountSheet.js` |
+| Brutto = netto × 1.19 in whole cents | `VAT_PERCENT`, `toGross` | `VAT_PERCENT`, `toGross` in `lib.js` |
 
 ## Product decisions
 
@@ -137,13 +139,12 @@ If you change one of these, update both sides:
 
 Remove items here once they are done.
 
-1. **New bidding flow**, see the next section.
-2. JSON import preview: the total only reads `contributions[id]`, while the server also accepts `contribution` per user. Also show the hours sum in the CSV and JSON preview.
-3. Small fixes:
+1. JSON import preview: the total only reads `contributions[id]`, while the server also accepts `contribution` per user. Also show the hours sum in the CSV and JSON preview.
+2. Small fixes:
    - Backup file names use the UTC date and hour.
    - `set-pin.js` always sets `defaultPin: false`.
 
-Done in October 2026 (security hardening for the meeting): login locks per device instead of per IP, per-account limit with trusted devices, scrypt limiter, audit log with address/browser/device inside the write queue, `npm audit` clean (express 4.22.3), security headers and CSP, request timeout, random start PIN for admin-added members, body limits, write budget, hourly backups, input normalization.
+Done in October 2026: the new bidding flow (see the next section), and the security hardening for the meeting: login locks per device instead of per IP, per-account limit with trusted devices, scrypt limiter, audit log with address/browser/device inside the write queue, `npm audit` clean (express 4.22.3), security headers and CSP, request timeout, random start PIN for admin-added members, body limits, write budget, hourly backups, input normalization.
 
 Deferred or not wanted:
 
@@ -152,6 +153,8 @@ Deferred or not wanted:
 - Longer admin PIN: not wanted; the admin should simply choose 6 digits.
 
 ## New bidding flow (agreed spec)
+
+Implemented in October 2026 (`AmountSheet.js`, `entry.js`, `MemberPage`, `AdminApp`). The section stays as the spec: change the app and this text together.
 
 Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page with example data; open it in a browser. It was reviewed on a phone, and its layout and its `pressKey`, `sanitize`, `evaluate` and `toNet` functions are the agreed behavior. The FRANZ!werk logo is left out of it on purpose; the app keeps its logo.
 
@@ -165,10 +168,8 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
 
 ### Backend
 
-- Replace `POST /me/contribution {delta}` and `POST /me/contribution/withdraw` with `PUT /me/contribution {amount}`: netto, 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`. `MAX_STEP` goes away.
-- Keep `rev` in the response and the audit line with from/to.
-- Remove the click queue in the frontend (`queueRef`, `flush`, `inFlight`).
-- Update `test.js`. The 200-parallel-clicks check becomes parallel absolute writes: the last write wins and nothing breaks.
+- `PUT /me/contribution {amount}`: netto, 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`. The old delta routes stay for cached pages only (see "Write path").
+- `rev` in the response and the audit line with from/to.
 - Export: CSV gets a `contribution_gross` column next to `contribution` (netto), JSON a `contributionsGross` map next to `contributions`. The import keeps reading the netto values and ignores the brutto ones.
 
 ### Member page

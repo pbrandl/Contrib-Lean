@@ -77,18 +77,24 @@ export function Progress({ total, target, count, hours = 0, mode = 'netto', note
 }
 
 // Banner at the top: dark green with a check mark for saved changes, ziegel for errors.
-// A tap closes it; confirmations also disappear on their own (useNotice).
+// A tap closes it; confirmations also disappear on their own (useNotice). Both live regions
+// stay in the page, so screen readers announce the text that appears in them.
 export function Notice({ notice, onClose }) {
-  if (!notice) return null;
-  const error = notice.tone === 'error';
-  const Icon = error ? AlertTriangle : CheckCircle2;
-  return (
-    <div className="notice-wrap" role={error ? 'alert' : 'status'}>
+  const banner = (error) => {
+    if (!notice || (notice.tone === 'error') !== error) return null;
+    const Icon = error ? AlertTriangle : CheckCircle2;
+    return (
       <button type="button" key={notice.at} onClick={onClose} className={`notice notice-in ${error ? 'bg-ziegel' : 'bg-gruen'}`}>
         <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
         <span className="flex-1">{notice.text}</span>
       </button>
-    </div>
+    );
+  };
+  return (
+    <>
+      <div className="notice-wrap" role="status">{banner(false)}</div>
+      <div className="notice-wrap" role="alert">{banner(true)}</div>
+    </>
   );
 }
 

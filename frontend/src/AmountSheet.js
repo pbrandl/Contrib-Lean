@@ -13,7 +13,9 @@ const round1 = (n) => Math.round(n * 10) / 10;
 
 // Full-screen sheet for a new bid (kind "money") or new hours ("hours"). What the member
 // types counts in the page's netto/brutto `mode`; `onSave` gets the netto amount or the hours.
-export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onClose }) {
+// `busy`: this sheet's value is being saved. `waiting`: an earlier save (from a sheet that was
+// closed before the answer came) is still running, so this one cannot be saved yet.
+export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = false, onSave, onClose }) {
   const k = KINDS[kind];
   const money = kind === 'money';
   const current = money ? me.contribution : me.hours;
@@ -32,7 +34,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
   const unchanged = raw === initial || next === current;
 
   const latest = useRef(null);
-  latest.current = { unchanged, next, busy };
+  latest.current = { unchanged, next, busy, waiting };
 
   const press = useCallback((key) => {
     if (latest.current.busy) return;
@@ -40,8 +42,8 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
   }, [kind]);
 
   const save = useCallback(() => {
-    const { unchanged: same, next: value, busy: sending } = latest.current;
-    if (!same && !sending) onSave(value);
+    const { unchanged: same, next: value, busy: sending, waiting: blocked } = latest.current;
+    if (!same && !sending && !blocked) onSave(value);
   }, [onSave]);
 
   const focusField = () => {
@@ -64,7 +66,14 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
     };
   }, [keypad]);
 
-  // Physical keys: Esc closes; on the keypad digits, comma or period, Backspace and Enter work too.
+  // After a failed save the text field gets the focus back, so typing goes on.
+  useEffect(() => {
+    if (!keypad && !busy) focusField();
+  }, [keypad, busy]);
+
+  // Physical keys: Esc closes; digits, comma or period, Backspace and Enter work too. On the
+  // keypad they always go to the sheet; on computers only while the text field has lost the
+  // focus (its own handler takes them otherwise), and the focus goes back into the field.
   useEffect(() => {
     const flash = (key) => {
       setPressed(key);
@@ -77,7 +86,12 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
         onClose();
         return;
       }
-      if (!keypad || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const active = document.activeElement;
+      if (!keypad) {
+        if (!inputRef.current || active === inputRef.current) return;
+        if (active && active.tagName === 'BUTTON' && e.key === 'Enter') return; // e.g. the close button
+      }
       let key = null;
       if (/^\d$/.test(e.key)) key = e.key;
       else if (e.key === ',' || e.key === '.') key = ',';
@@ -90,7 +104,8 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
       if (!key) return;
       e.preventDefault();
       press(key);
-      flash(key);
+      if (keypad) flash(key);
+      else focusField();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -106,6 +121,10 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
 
   // Text field: keys follow the keypad's rules, cursor keys and other characters do nothing.
   const onFieldKey = (e) => {
+    if (CURSOR_KEYS.includes(e.key) || e.key === 'Delete') {
+      e.preventDefault(); // also with Ctrl or Shift: the cursor stays at the end
+      return;
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (/^\d$/.test(e.key)) press(e.key);
     else if (e.key === ',' || e.key === '.') press(',');
@@ -127,9 +146,10 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
     if (!busy && !(kind === 'hours' && rawValue(text) > MAX_HOURS)) setRaw(text);
   };
 
-  // A click anywhere on the sheet (except on a button) puts the cursor back into the field.
+  // A click anywhere on the sheet (except on a button), also on the digits, puts the cursor
+  // back into the field, at the end.
   const onSheetMouseDown = (e) => {
-    if (keypad || e.target.closest('button') || e.target === inputRef.current) return;
+    if (keypad || e.target.closest('button')) return;
     e.preventDefault();
     focusField();
   };
@@ -226,7 +246,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, onSave, onCl
         )}
 
         <div className="flex items-center pt-3">
-          <button type="button" className="save" onClick={save} disabled={unchanged || busy}>
+          <button type="button" className="save" onClick={save} disabled={unchanged || busy || waiting}>
             {busy ? 'Wird gespeichert …' : 'Speichern'}
             {!busy && <ChevronRight className="h-6 w-6" aria-hidden="true" />}
           </button>
