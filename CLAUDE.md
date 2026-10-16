@@ -68,6 +68,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - **Audit lines are recorded with `log(event, details)` inside `change`**; `mutate` writes them after the database, still inside the queue, with the new `rev`. Add `...requestInfo(req)` (ip, ua, device prefix) to every line. Login and failed login are logged with `audit()` directly (they change no data).
 - **scrypt never runs inside the queue:** routes hash a new PIN first and pass it as `setPin(user, pin, { hash })`. Only `migrateDatabase` and the import still hash inside.
 - Member write routes go through `limitWrites` (per-member budget: 50, then 10 per second, else 429).
+- **Bid steps are idempotent per request id:** `POST /me/contribution {delta, request}`; the last 20 ids per member are kept in `data.requests`, and the frontend retries a step without an answer with the same id (`flush` in MemberApp.js, up to 3 times).
 - **Bids are deltas today.** `POST /me/contribution {delta}` adds to the stored bid on the server. The frontend (`MemberPage.flush`) collects clicks in `queueRef` while a request is in flight and sends their sum next, which makes fast or parallel clicks safe (tested with 200 parallel clicks). Hours are absolute (`PUT /me/hours`) and rounded to half hours on the server. The new bidding flow replaces the delta with an absolute value; see "New bidding flow".
 - **Every state response carries `rev` and `boot`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp, via `isNewer` in `lib.js`) drops any response whose `rev` is older than what it shows, unless `boot` changed (server restart, e.g. after restoring a backup with a lower `rev`). New endpoints that return state must include `summary(data)`.
 
@@ -79,9 +80,10 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - **Login throttling** (in memory, lost on restart; README "Security model" has the numbers). Never key anything by IP alone: the whole meeting shares one address.
   - Every browser sends a device id (`deviceId()` in `lib.js`, 22 base64url characters, in the login body and as `X-Device` header).
   - Own-device lock: `deviceFailures`, keyed `userId|d:<device>`; pages without a device id fall back to `userId|n:<IPv4 or IPv6 /64>` (`networkOf`).
-  - Account budget: `accountBudgets`, a token bucket per account for devices that are not trusted, taken before scrypt and given back on a right PIN.
+  - Budgets for devices that are not trusted, taken before scrypt and given back on a right PIN (`takeAttempt`/`returnAttempt`): `networkBudgets` per account and network, and `accountBudgets` per account across all networks except `trustedNetworks` (where the admin logged in within 24 h). Never make a budget that the meeting's network shares with the rest of the internet: a remote attacker could then lock out the meeting.
+  - `loginsInFlight`: one PIN check per lock key at a time.
   - Trusted device: after a right PIN the login returns `trust`, signed with `trustKey` (derived from the session secret) over `{uid, did, pv, exp}`. The frontend keeps it per account (`rememberTrust`/`trustFor`) and sends it with the next login; it skips the account budget, not the own-device lock.
-  - Everything that rejects an attempt runs before scrypt; `checkPinLimited` runs at most 2 scrypt at a time (queue 200 per class, else 503).
+  - Everything that rejects an attempt runs before scrypt. `withPinSlot` runs at most 2 scrypt at a time for logins (`checkPinLimited`) and new PINs (`hashPinLimited`). Trusted and new devices take turns; it answers 503 when the expected wait exceeds 8 s or 200 are waiting, and it skips requests whose connection is gone.
   - An admin PIN reset (`clearFailedLogins`) lifts all locks and refills the budget.
 - Members the admin adds get a random start PIN (`randomStartPin`, never 1234/0000), returned once as `added.startPin` and shown in `AdminApp` until closed. Imported members still get `DEFAULT_PIN`.
 

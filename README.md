@@ -31,15 +31,19 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 - Every browser sends a random device id (in the login and as `X-Device` header). After a right PIN it gets a signed "trusted device" credential for that account (180 days, bound to the device id and the current PIN).
 - Changing a PIN ends all older sessions of that account and the trusted-device status of all its devices.
 - Own device: 5 wrong PINs on one device lock that device for that account (1 min, doubling up to 1 h). Other phones are not affected, also in the same WLAN. Pages without a device id (an old cached version) are locked per network instead (IPv4 address or IPv6 /64).
-- Whole account: wrong PINs from devices that are not trusted for the account are limited to 20, then one every 18 minutes (max. 100 a day). For the admin: 10, then one every 2 hours (max. 22 a day). After that only trusted devices can log in to that account until the limit refills. With a random 4-digit PIN this means about two months on average to guess a member PIN, over a year for the admin. A trusted device that types 5 wrong PINs in a row counts as new until its next right PIN.
-- There is no limit per IP address, so a whole WLAN behind one address is never blocked (tested with 600 members and 336 typos behind one address).
-- A new PIN from the admin lifts all locks of that account. If the admin is locked out on all devices, set a new PIN with `set-pin.js` (see below); the restart clears all locks. Log in as admin once before an event on the device you will use, so it is trusted.
+- Per account and network (IPv4 address or IPv6 /64): wrong PINs from devices that are not trusted for the account are limited to 20, then one every 18 minutes. For the admin: 10, then one every 2 hours. An attacker elsewhere therefore only uses up the budget of their own network, never the one of the meeting.
+- Per account across all networks, against guessing with many addresses: 100, then 100 a day (admin: 30, then one an hour). This does not apply to the network the admin logged in from in the last 24 hours, i.e. the meeting's WLAN once the admin has logged in there. With a random 4-digit PIN this means about seven weeks on average to guess a member PIN, more than half a year for the admin.
+- When a budget is used up, only trusted devices can log in to that account from there until it refills. A trusted device that types 5 wrong PINs in a row counts as new until its next right PIN. Only one PIN check per device and account runs at a time.
+- There is no limit per IP address alone, so a whole WLAN behind one address is never blocked (tested with 600 members and 336 typos behind one address).
+- A new PIN from the admin lifts all locks of that account. If the admin is locked out on all devices, set a new PIN with `set-pin.js` (see below); the restart clears all locks.
+- At an event: log in as admin once on the device you will use (it becomes trusted), and once over the meeting's WLAN at the start (that network becomes exempt from the account-wide limit).
 - Locks live in memory; a restart resets them.
-- At most 2 PIN checks run at the same time (more wait in a queue, beyond 200 the server answers 503), so a login rush does not slow down the bids.
+- At most 2 PIN checks (logins and new PINs) run at the same time; more wait in a queue where trusted devices and new devices take turns. If the expected wait is over 8 s or more than 200 are waiting, the server answers 503, so a login rush does not slow down the bids. Logins whose page has already given up are skipped.
 - Each member can make 50 changes at once, then 10 per second, so a script cannot flood the write queue.
 - Request bodies are limited to 16 kB (the import: 1 MB, read only after the admin session was checked).
 - The pages send a strict Content-Security-Policy (no inline scripts; `frontend/.env` keeps the build free of them), refuse to be shown in frames of other sites and set `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`frontend/public/.htaccess`). The API sets its own headers.
-- All writes go through one queue and the server adds bid steps itself, so parallel clicks are never lost. The audit log is written inside that queue, in the order of the changes.
+- All writes go through one queue and the server adds bid steps itself, so parallel clicks are never lost. Each bid step carries a request id: when a page gets no answer it sends the step again with the same id, and the server counts it only once. The audit log is written inside that queue, in the order of the changes.
+- Admin pages from before an update (no device id) still get the start PIN 1234 when they add a member, because that is what they show.
 
 ## Common tasks
 

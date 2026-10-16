@@ -150,7 +150,7 @@ function MembersSection({ users, call, showNotice }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [created, setCreated] = useState(null);
+  const [created, setCreated] = useState([]);
 
   const add = async (e) => {
     e.preventDefault();
@@ -160,13 +160,17 @@ function MembersSection({ users, call, showNotice }) {
     }
     setAdding(true);
     setAddError('');
-    setCreated(null);
     try {
       const result = await call('/admin/users', { method: 'POST', body: { name: name.trim() } });
       setName('');
-      setCreated({ name: result.added.name, pin: result.added.startPin });
+      // Start PINs are shown only once: keep all of this visit until "Fertig".
+      setCreated(prev => [{ id: result.added.id, name: result.added.name, pin: result.added.startPin }, ...prev]);
     } catch (err) {
-      if (err.status !== 401) setAddError(err.message);
+      if (err.status === 0) {
+        setAddError(`${err.message} Prüfe in der Liste, ob ${name.trim()} schon eingetragen ist. Wenn ja, vergib mit „PIN setzen“ eine PIN.`);
+      } else if (err.status !== 401) {
+        setAddError(err.message);
+      }
     }
     setAdding(false);
   };
@@ -225,14 +229,20 @@ function MembersSection({ users, call, showNotice }) {
         )}
       </form>
 
-      {created && (
-        <div className="mt-4 space-y-2 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
-          <p className="break-words">{created.name} ist eingetragen. Start-PIN:</p>
-          <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{created.pin}</p>
+      {created.length > 0 && (
+        <div className="mt-4 space-y-3 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
+          <ul className="space-y-2">
+            {created.map(entry => (
+              <li key={entry.id}>
+                <p className="break-words">{entry.name} ist eingetragen. Start-PIN:</p>
+                <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{entry.pin}</p>
+              </li>
+            ))}
+          </ul>
           <p className="text-tinte/75">
-            Gib die PIN direkt weiter. Sie wird nur jetzt angezeigt. Später kannst du mit „PIN setzen“ eine neue vergeben.
+            Gib die {created.length === 1 ? 'PIN' : 'PINs'} direkt weiter. Sie {created.length === 1 ? 'wird' : 'werden'} nur jetzt angezeigt. Später kannst du mit „PIN setzen“ eine neue vergeben.
           </p>
-          <button type="button" className="btn-rand" onClick={() => setCreated(null)}>Fertig</button>
+          <button type="button" className="btn-rand" onClick={() => setCreated([])}>Fertig</button>
         </div>
       )}
 
@@ -427,7 +437,8 @@ function DataSection({ memberCount, call, showNotice }) {
   const runImport = async () => {
     setBusy(true);
     try {
-      const result = await call('/admin/import', { method: 'POST', body: pending.body });
+      // An import with PINs takes a while on the server (one scrypt per PIN).
+      const result = await call('/admin/import', { method: 'POST', body: pending.body, timeout: 5 * 60 * 1000 });
       setPending(null);
       showNotice('ok', `${countMembers(result.imported)} importiert.`);
     } catch (err) {
@@ -438,7 +449,7 @@ function DataSection({ memberCount, call, showNotice }) {
 
   const exportAs = async (kind) => {
     try {
-      const data = await call('/admin/export');
+      const data = await call('/admin/export', { timeout: 60 * 1000 });
       if (kind === 'csv') {
         download(`bietrunde-${today()}.csv`, 'text/csv;charset=utf-8', membersToCsv(data.users, data.contributions, data.hours));
       } else {

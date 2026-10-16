@@ -15,7 +15,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = 'GET', body, token } = {}) {
+// `timeout`: longer for requests that may take a while on the server (import).
+export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT_MS } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -24,7 +25,7 @@ export async function api(path, { method = 'GET', body, token } = {}) {
 
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   let timedOut = false;
-  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, TIMEOUT_MS) : null;
+  const timer = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, timeout) : null;
 
   try {
     let response;
@@ -118,6 +119,12 @@ export function deviceId() {
     if (currentDevice) deviceStore.set(currentDevice);
   }
   return currentDevice;
+}
+
+// Id for one bid step. If the page gets no answer it sends the step again with the same
+// id, and the server counts it only once (REQUEST_PATTERN in backend/server.js).
+export function requestId() {
+  return randomDeviceId() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
 // After a right PIN the server returns a "trusted device" credential for this account.

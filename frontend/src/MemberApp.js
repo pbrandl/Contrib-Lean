@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, Search, X } from 'lucide-react';
-import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, rememberTrust, round2, useNotice, usePolling } from './lib';
+import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, rememberTrust, requestId, round2, useNotice, usePolling } from './lib';
 import { Band, Callout, LoadingPage, Logo, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -219,6 +219,7 @@ function FrontPage({ onLogin }) {
 // Member page: own bid, hours per month, PIN change.
 
 const STEPS = [5, 10, 25, 50];
+const STEP_RETRIES = 3;
 
 // "6", "6,5", "6.5 h" -> number of hours, NaN if not a number.
 function parseHours(input) {
@@ -281,8 +282,19 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
       queueRef.current = 0;
       setQueued(0);
       setInFlight(delta);
+      // Without an answer the same step goes out again with the same id; the server
+      // counts it only once, so nothing is lost and nothing is doubled.
+      const body = { delta, request: requestId() };
       try {
-        saved = await api('/me/contribution', { method: 'POST', token, body: { delta } });
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            saved = await api('/me/contribution', { method: 'POST', token, body });
+            break;
+          } catch (err) {
+            if (err.status !== 0 || attempt >= STEP_RETRIES) throw err;
+            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          }
+        }
         apply(saved);
       } catch (err) {
         queueRef.current = 0;

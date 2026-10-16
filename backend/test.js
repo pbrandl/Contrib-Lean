@@ -24,11 +24,14 @@ const { start } = require('./server');
 let base;
 const results = [];
 
-async function call(method, url, { token, body, ip } = {}) {
+const testDevice = crypto.randomBytes(16).toString('base64url');
+
+async function call(method, url, { token, body, ip, oldPage = false } = {}) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
   if (ip) headers['X-Forwarded-For'] = ip;
+  if (!oldPage) headers['X-Device'] = testDevice; // like the current frontend
   const res = await fetch(`${base}/api${url}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : null, raw: text, retryAfter: Number(res.headers.get('retry-after')) || 0 };
@@ -117,6 +120,11 @@ async function check(name, fn) {
     assert.ok(pins.size >= 4, 'start PINs differ');
     const chosen = await call('POST', '/admin/users', { token: admin, body: { name: 'Mit PIN', pin: '2222' } });
     assert.equal(chosen.body.added.startPin, undefined);
+    // An admin page from before the update (no X-Device) says "Start-PIN: 1234", so it gets 1234.
+    const old = await call('POST', '/admin/users', { token: admin, body: { name: 'Alte Seite' }, oldPage: true });
+    assert.equal(old.body.added.startPin, '1234');
+    assert.equal(old.body.added.defaultPin, true);
+    assert.equal((await call('POST', '/login', { body: { userId: old.body.added.id, pin: '1234' } })).status, 200);
     assert.equal((await call('POST', '/login', { body: { userId: added.body.added.id, pin: '1234' } })).status, 401);
     const raw = fs.readFileSync(path.join(dataDir, 'database.json'), 'utf8');
     assert.ok(!raw.includes(`"${memberPin}"`), 'start PIN is not stored in plain text');
@@ -243,24 +251,27 @@ async function check(name, fn) {
     assert.equal((await call('POST', '/login', { ip: '2001:db8:1:2::c', body: { userId: cem, pin: '12' } })).status, 400);
   });
 
-  await check('attacker rotating addresses and device ids: 20 wrong PINs, then only trusted devices', async () => {
+  const attackNet = '203.0.113.66';
+
+  await check('attacker on one network: 20 wrong PINs, then only trusted devices from there; the owner elsewhere is not blocked', async () => {
     const dora = await addMember('Dora', '8642');
     const doraPhone = newDevice();
     const first = await call('POST', '/login', { ip: '192.0.2.200', body: { userId: dora, pin: '8642', device: doraPhone } });
     assert.equal(first.status, 200);
     const attack = [];
     for (let i = 0; i < 25; i += 1) {
-      attack.push(await call('POST', '/login', { ip: newIp(), body: { userId: dora, pin: String(1000 + i), device: i % 3 ? newDevice() : undefined } }));
+      attack.push(await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: String(1000 + i), device: newDevice() } }));
     }
     assert.deepEqual(statuses(attack), [...Array(20).fill(401), ...Array(5).fill(429)]);
-    assert.match(attack[20].body.error, /neuen Geräten/);
-    assert.ok(attack[20].retryAfter > 0 && attack[20].retryAfter <= 18 * 60);
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: dora, pin: '8642', device: newDevice() } })).status, 429);
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: dora, pin: '8642' } })).status, 429);
-    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '8642', device: newDevice(), trust: first.body.trust } })).status, 429, 'credential of another browser');
+    assert.match(attack[24].body.error, /neuen Geräten/);
+    assert.ok(attack[24].retryAfter > 0 && attack[24].retryAfter <= 18 * 60);
+    assert.equal((await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '8642', device: newDevice() } })).status, 429);
+    // The meeting's WLAN has its own budget: Dora gets in on a new phone there.
+    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '8642', device: newDevice() } })).status, 200);
+    assert.equal((await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '8642', device: newDevice(), trust: first.body.trust } })).status, 429, 'credential of another browser');
     assert.equal((await call('GET', '/me', { token: first.body.trust })).status, 401, 'credential is no session');
-    const back = await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '8642', device: doraPhone, trust: first.body.trust } });
-    assert.equal(back.status, 200);
+    const back = await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '8642', device: doraPhone, trust: first.body.trust } });
+    assert.equal(back.status, 200, 'trusted phone gets in even from the drained network');
     // The trusted phone keeps its own lock: 5 wrong PINs, then 429.
     for (let i = 0; i < 5; i += 1) {
       assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '0001', device: doraPhone, trust: back.body.trust } })).status, 401);
@@ -268,18 +279,37 @@ async function check(name, fn) {
     assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '8642', device: doraPhone, trust: back.body.trust } })).status, 429);
     // A new PIN from the admin lifts all of it; the old credential ends with the old PIN.
     assert.equal((await call('PUT', `/admin/users/${dora}/pin`, { token: admin, body: { pin: '9753' } })).status, 200);
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: dora, pin: '9753', device: newDevice() } })).status, 200);
-    for (let i = 0; i < 20; i += 1) await call('POST', '/login', { ip: newIp(), body: { userId: dora, pin: '0002', device: newDevice() } });
-    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: dora, pin: '9753', device: doraPhone, trust: back.body.trust } })).status, 429, 'credential from before the new PIN');
+    assert.equal((await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '9753', device: newDevice() } })).status, 200);
+    for (let i = 0; i < 20; i += 1) await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '0002', device: newDevice() } });
+    assert.equal((await call('POST', '/login', { ip: attackNet, body: { userId: dora, pin: '9753', device: doraPhone, trust: back.body.trust } })).status, 429, 'credential from before the new PIN');
   });
 
-  await check('parallel attempts cannot overdraw the account budget', async () => {
+  await check('attacker rotating networks: at most 100 guesses per account, the admin\'s network stays open', async () => {
+    const gus = await addMember('Gus', '6420');
+    const attack = [];
+    for (let i = 0; i < 105; i += 1) {
+      attack.push(await call('POST', '/login', { ip: newIp(), body: { userId: gus, pin: String(2000 + i), device: newDevice() } }));
+    }
+    assert.equal(attack.filter(r => r.status === 401).length, 100);
+    assert.deepEqual(statuses(attack.slice(100)), [429, 429, 429, 429, 429]);
+    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: gus, pin: '6420', device: newDevice() } })).status, 429);
+    // The admin logged in from the loopback network (no forwarded address): it is exempt.
+    assert.equal((await call('POST', '/login', { body: { userId: gus, pin: '6420', device: newDevice() } })).status, 200);
+  });
+
+  await check('parallel attempts cannot overdraw the budget or pass the own-device lock', async () => {
     const emil = await addMember('Emil', '4826');
     const attack = await Promise.all(Array.from({ length: 40 }, (_, i) => call('POST', '/login', {
-      ip: newIp(), body: { userId: emil, pin: String(2000 + i), device: newDevice() }
+      ip: attackNet, body: { userId: emil, pin: String(2000 + i), device: newDevice() }
     })));
     assert.equal(attack.filter(r => r.status === 401).length, 20);
     assert.equal(attack.filter(r => r.status === 429).length, 20);
+    const phone = newDevice();
+    const same = await Promise.all(Array.from({ length: 8 }, (_, i) => call('POST', '/login', {
+      ip: wlan, body: { userId: emil, pin: String(3000 + i), device: phone }
+    })));
+    assert.ok(same.filter(r => r.status === 401).length <= 2, 'at most a couple are checked');
+    assert.ok(same.some(r => r.status === 429 && /noch geprüft/.test(r.body.error)));
   });
 
   await check('admin PIN reset lifts the lock and ends old sessions', async () => {
@@ -299,8 +329,8 @@ async function check(name, fn) {
     const fritz = await addMember('Fritz', '3141');
     const phone = newDevice();
     let trust = (await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '3141', device: phone } })).body.trust;
-    for (let i = 0; i < 20; i += 1) await call('POST', '/login', { ip: newIp(), body: { userId: fritz, pin: String(4000 + i), device: newDevice() } });
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: fritz, pin: '3141', device: newDevice() } })).status, 429);
+    for (let i = 0; i < 20; i += 1) await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: String(4000 + i), device: newDevice() } });
+    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '3141', device: newDevice() } })).status, 429);
     for (let i = 0; i < 5; i += 1) {
       assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '0003', device: phone, trust } })).status, 401);
     }
@@ -312,8 +342,8 @@ async function check(name, fn) {
     const refilled = await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '3141', device: phone, trust } });
     assert.equal(refilled.status, 200);
     trust = refilled.body.trust;
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: fritz, pin: '0004', device: newDevice() } })).status, 401);
-    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: fritz, pin: '3141', device: newDevice() } })).status, 429);
+    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '0004', device: newDevice() } })).status, 401);
+    assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '3141', device: newDevice() } })).status, 429);
     assert.equal((await call('POST', '/login', { ip: wlan, body: { userId: fritz, pin: '3141', device: phone, trust } })).status, 200);
   });
 
@@ -388,12 +418,25 @@ async function check(name, fn) {
 
   await check('a script cannot flood the write queue', async () => {
     const member = await memberNow();
-    const res = [];
-    for (let i = 0; i < 60; i += 1) res.push(await call('PUT', '/me/hours', { token: member, body: { hours: 6 } }));
+    const res = await Promise.all(Array.from({ length: 80 }, () => call('PUT', '/me/hours', { token: member, body: { hours: 6 } })));
+    assert.ok(res.every(r => r.status === 200 || r.status === 429));
+    assert.ok(res.filter(r => r.status === 200).length >= 50);
     assert.ok(res.filter(r => r.status === 429).length > 0);
-    assert.ok(res.slice(0, 50).every(r => r.status === 200));
     advance(10 * 1000);
     assert.equal((await call('PUT', '/me/hours', { token: member, body: { hours: 6 } })).status, 200);
+  });
+
+  await check('a bid step sent again with the same id counts once', async () => {
+    const member = await memberNow();
+    const before = (await call('GET', '/me', { token: member })).body.contribution;
+    const step = { delta: 5, request: 'schritt-0001' };
+    assert.equal((await call('POST', '/me/contribution', { token: member, body: step })).body.contribution, before + 5);
+    assert.equal((await call('POST', '/me/contribution', { token: member, body: step })).body.contribution, before + 5, 'retry');
+    const both = await Promise.all([1, 2].map(() => call('POST', '/me/contribution', { token: member, body: { delta: 10, request: 'schritt-0002' } })));
+    assert.ok(both.every(r => r.status === 200));
+    assert.equal((await call('GET', '/me', { token: member })).body.contribution, before + 15);
+    assert.equal((await call('POST', '/me/contribution', { token: member, body: { delta: 1, request: 'x' } })).body.contribution, before + 16, 'invalid id: counted like a step without id');
+    assert.doesNotMatch(JSON.stringify((await call('GET', '/admin/export', { token: admin })).body), /schritt/);
   });
 
   await check('import ignores ids that every object has, so no bid is lost', async () => {
@@ -498,16 +541,23 @@ async function check(name, fn) {
     console.log(`     crowd: 500 logins in ${Date.now() - started} ms`);
   });
 
-  await check('admin under attack: new devices wait after 10 wrong PINs, the trusted device gets in', async () => {
+  await check('admin under attack: 10 wrong PINs per network, 30 overall; the meeting network and the trusted device get in', async () => {
     const attack = [];
     for (let i = 0; i < 12; i += 1) {
-      attack.push(await call('POST', '/login', { ip: newIp(), body: { userId: 'admin', pin: String(3000 + i), device: newDevice() } }));
+      attack.push(await call('POST', '/login', { ip: attackNet, body: { userId: 'admin', pin: String(3000 + i), device: newDevice() } }));
     }
-    // One wrong admin PIN came from the check 'admin changes the admin PIN'.
-    assert.deepEqual(statuses(attack), [...Array(9).fill(401), ...Array(3).fill(429)]);
-    assert.match(attack[9].body.error, /Admin-Konto/);
-    assert.equal((await call('POST', '/login', { ip: '198.51.100.77', body: { userId: 'admin', pin: '4711', device: newDevice() } })).status, 429);
-    const trusted = await call('POST', '/login', { ip: '198.51.100.77', body: { userId: 'admin', pin: '4711', device: adminDevice, trust: adminTrust } });
+    assert.deepEqual(statuses(attack), [...Array(10).fill(401), 429, 429]);
+    assert.match(attack[10].body.error, /Admin-Konto/);
+    // The crowd's WLAN is where the admin logged in, so it is exempt from the overall budget.
+    assert.equal((await call('POST', '/login', { ip: '198.51.100.77', body: { userId: 'admin', pin: '4711', device: newDevice() } })).status, 200);
+    const rotating = [];
+    for (let i = 0; i < 25; i += 1) {
+      rotating.push(await call('POST', '/login', { ip: newIp(), body: { userId: 'admin', pin: String(3100 + i), device: newDevice() } }));
+    }
+    assert.equal(rotating.filter(r => r.status === 401).length, 20, '30 overall minus 10 from the attacker network');
+    assert.equal((await call('POST', '/login', { ip: newIp(), body: { userId: 'admin', pin: '4711', device: newDevice() } })).status, 429);
+    assert.equal((await call('POST', '/login', { ip: '198.51.100.77', body: { userId: 'admin', pin: '4711', device: newDevice() } })).status, 200);
+    const trusted = await call('POST', '/login', { ip: newIp(), body: { userId: 'admin', pin: '4711', device: adminDevice, trust: adminTrust } });
     assert.equal(trusted.status, 200);
     assert.equal(trusted.body.role, 'admin');
   });

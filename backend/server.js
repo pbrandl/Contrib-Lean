@@ -32,28 +32,43 @@ const WRITE_LIMIT = { burst: 50, refillMs: 100 };
 // Changes with every start, so pages accept a lower rev after a backup was restored.
 const BOOT = crypto.randomBytes(6).toString('base64url');
 
-// Login throttling (in memory, a restart resets it).
+// Login throttling (in memory, a restart resets it). Nothing is keyed by IP address alone:
+// at the meeting hundreds of phones share one address.
 // Own device: after LOCK_AFTER wrong PINs for an account the device is locked for it,
 // starting at one minute and doubling with every further failure (max. one hour).
 const LOCK_AFTER = 5;
 const MAX_LOCK_MS = 60 * 60 * 1000;
 const FAILURE_MEMORY_MS = 24 * 60 * 60 * 1000;
 const MAX_DEVICE_ENTRIES = 10000;
-// Whole account: every attempt from a device that is not trusted for the account takes
-// one attempt from a budget that refills slowly; a right PIN gives it back.
-// Members: 20, then one every 18 minutes (max. 100 a day). Admin: 10, then one every 2 hours (max. 22 a day).
-const ACCOUNT_LIMITS = {
-  member: { burst: 20, refillMs: 18 * 60 * 1000 },
-  admin: { burst: 10, refillMs: 2 * 60 * 60 * 1000 }
+// Attempts from devices that are not trusted for the account take one attempt from two
+// budgets; a right PIN gives both back.
+// Per account and network (IPv4 address or IPv6 /64): an attacker elsewhere only uses up
+// the budget of their own network, never the one of the meeting.
+const NETWORK_LIMITS = {
+  member: { burst: 20, refillMs: 18 * 60 * 1000 }, // 20, then one every 18 minutes
+  admin: { burst: 10, refillMs: 2 * 60 * 60 * 1000 } // 10, then one every 2 hours
 };
+// Per account across all networks, against guessing from many addresses. It does not apply
+// to the network the admin logged in from in the last 24 hours (the meeting's WLAN), so
+// nobody outside can block the meeting.
+const ACCOUNT_LIMITS = {
+  member: { burst: 100, refillMs: 24 * 60 * 60 * 1000 / 100 }, // 100, then 100 a day
+  admin: { burst: 30, refillMs: 60 * 60 * 1000 } // 30, then one an hour
+};
+const TRUSTED_NETWORK_MS = 24 * 60 * 60 * 1000;
+const MAX_BUDGET_ENTRIES = 20000;
 // Browsers send a random device id; after a right PIN they get a signed credential
-// ("trusted device") that lets them skip the account budget.
+// ("trusted device") that lets them skip both budgets.
 const DEVICE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const TRUST_MS = 180 * 24 * 60 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 1000;
 // scrypt runs on libuv's 4 threads, which file access needs too.
 const MAX_PARALLEL_PIN_CHECKS = 2;
 const MAX_WAITING_PIN_CHECKS = 200;
+const MAX_PIN_WAIT_MS = 8000; // beyond that the server answers 503 instead of letting the page wait
+// Bid steps carry a request id; a retry with the same id is counted once.
+const REQUEST_PATTERN = /^[A-Za-z0-9_-]{8,40}$/;
+const REQUESTS_TO_REMEMBER = 20;
 
 // Uberspace puts exactly one reverse proxy in front of the app.
 app.set('trust proxy', 1);
@@ -94,7 +109,8 @@ const handle = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const isAdminId = (id) => id === 'admin';
-const sameName = (a, b) => a.normalize('NFC').trim().toLocaleLowerCase('de') === b.normalize('NFC').trim().toLocaleLowerCase('de');
+const nameKey = (name) => String(name).normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('de');
+const sameName = (a, b) => nameKey(a) === nameKey(b);
 const formatAmount = (n) => n.toLocaleString('de-DE');
 const own = (object, key) => (Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined);
 
@@ -107,7 +123,7 @@ function requirePin(pin, where = '') {
 
 // Names are shown to everybody, so invisible and direction-changing characters are
 // removed: nobody can add a look-alike of an existing name.
-const INVISIBLE = /[\u0000-\u001f\u007f-\u009f­؜᠎​-‏‪-‮⁠-⁤⁦-⁯﻿]/g;
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
 
 function requireName(name, where = '') {
   const clean = typeof name === 'string' ? name.normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim() : '';
@@ -205,6 +221,7 @@ async function readDatabase() {
   const data = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
   data.contributions = data.contributions || {};
   data.hours = data.hours || {};
+  data.requests = data.requests || {};
   return data;
 }
 
@@ -404,7 +421,10 @@ function findUserOrLogout(data, userId) {
 // Login throttling state (in memory; a restart resets it).
 
 const deviceFailures = new Map(); // lockKey -> { count, lockedUntil, lastAt }, oldest failure first
-const accountBudgets = new Map(); // userId -> { tokens, at }
+const networkBudgets = new Map(); // `${userId}|${network}` -> bucket
+const accountBudgets = new Map(); // userId -> bucket
+const trustedNetworks = new Map(); // network -> until (where the admin logged in)
+const loginsInFlight = new Set(); // lockKeys with a PIN check running
 let prunedAt = 0;
 
 const deviceIdOf = (value) => (typeof value === 'string' && DEVICE_PATTERN.test(value) ? value : null);
@@ -431,7 +451,7 @@ function networkOf(ip) {
 // fall back to account and network, and to the account alone without a forwarded address.
 const lockKey = (userId, deviceId, ip) => `${userId}|${deviceId ? `d:${deviceId}` : `n:${networkOf(ip)}`}`;
 
-const limitsFor = (userId) => ACCOUNT_LIMITS[isAdminId(userId) ? 'admin' : 'member'];
+const limitKind = (userId) => (isAdminId(userId) ? 'admin' : 'member');
 
 function issueTrust(user, deviceId) {
   return signSession({ uid: user.id, did: deviceId, pv: user.pinVersion, exp: Date.now() + TRUST_MS }, trustKey);
@@ -452,6 +472,21 @@ function waitText(ms) {
 
 const waitMessage = (ms) => `Zu viele Fehlversuche. Versuche es in ${waitText(ms)} wieder.`;
 
+const isTrustedNetwork = (network, now) => (trustedNetworks.get(network) || 0) > now;
+
+// Token bucket: refilled to `now`, moved to the end of the map (newest last), capped in size.
+function bucket(map, key, limits, now) {
+  const b = map.get(key) || { tokens: limits.burst, at: now, limits };
+  b.tokens = Math.min(limits.burst, b.tokens + (now - b.at) / limits.refillMs);
+  b.at = now;
+  map.delete(key);
+  map.set(key, b);
+  if (map.size > MAX_BUDGET_ENTRIES) map.delete(map.keys().next().value);
+  return b;
+}
+
+const isFull = (b, now) => b.tokens + (now - b.at) / b.limits.refillMs >= b.limits.burst;
+
 function pruneLoginState(now) {
   if (now - prunedAt < 60 * 1000 && deviceFailures.size < MAX_DEVICE_ENTRIES) return;
   prunedAt = now;
@@ -459,15 +494,15 @@ function pruneLoginState(now) {
     if (now - entry.lastAt > FAILURE_MEMORY_MS) deviceFailures.delete(key);
   }
   // Still too many (somebody keeps inventing device ids): forget the oldest failures.
-  // The account budget still counts them.
+  // The budgets still count them.
   for (const key of deviceFailures.keys()) {
     if (deviceFailures.size < MAX_DEVICE_ENTRIES * 0.9) break;
     deviceFailures.delete(key);
   }
-  for (const [userId, budget] of accountBudgets) {
-    const { burst, refillMs } = limitsFor(userId);
-    if (budget.tokens + (now - budget.at) / refillMs >= burst) accountBudgets.delete(userId);
+  for (const map of [networkBudgets, accountBudgets]) {
+    for (const [key, b] of map) if (isFull(b, now)) map.delete(key);
   }
+  for (const [network, until] of trustedNetworks) if (until <= now) trustedNetworks.delete(network);
 }
 
 function assertDeviceAllowed(key) {
@@ -478,29 +513,32 @@ function assertDeviceAllowed(key) {
   }
 }
 
-// Takes one attempt from the account budget before scrypt, so parallel requests
-// cannot overdraw it.
-function takeAccountAttempt(userId) {
+// Takes one attempt from the network budget and (outside the admin's network) from the
+// account budget, before scrypt, so parallel requests cannot overdraw them.
+function takeAttempt(userId, network) {
   const now = Date.now();
-  const limits = limitsFor(userId);
-  const budget = accountBudgets.get(userId) || { tokens: limits.burst, at: now };
-  budget.tokens = Math.min(limits.burst, budget.tokens + (now - budget.at) / limits.refillMs);
-  budget.at = now;
-  accountBudgets.set(userId, budget);
-  if (budget.tokens < 1) {
-    const waitMs = (1 - budget.tokens) * limits.refillMs;
+  const kind = limitKind(userId);
+  pruneLoginState(now);
+  const local = bucket(networkBudgets, `${userId}|${network}`, NETWORK_LIMITS[kind], now);
+  const global = isTrustedNetwork(network, now) ? null : bucket(accountBudgets, userId, ACCOUNT_LIMITS[kind], now);
+  const empty = [local, global].find(b => b && b.tokens < 1);
+  if (empty) {
+    const waitMs = (1 - empty.tokens) * empty.limits.refillMs;
     const message = isAdminId(userId)
       ? `Für das Admin-Konto gab es zu viele Fehlversuche. Auf neuen Geräten geht die Anmeldung erst in ${waitText(waitMs)} wieder. Melde dich auf einem Gerät an, auf dem du schon einmal als Admin angemeldet warst.`
       : `Für dieses Konto gab es zu viele Fehlversuche. Auf neuen Geräten geht die Anmeldung erst in ${waitText(waitMs)} wieder. Melde dich auf einem Gerät an, auf dem du schon einmal angemeldet warst, oder lass dir von einem Admin eine neue PIN setzen.`;
     throw new HttpError(429, message, waitMs);
   }
-  budget.tokens -= 1;
-  if (budget.tokens < 1) console.log(`[login] ${userId}: no attempts left for new devices`);
+  local.tokens -= 1;
+  if (global) global.tokens -= 1;
+  if (local.tokens < 1 || (global && global.tokens < 1)) {
+    console.log(`[login] ${userId}: no attempts left for new devices${global && global.tokens < 1 ? '' : ` from ${network || 'loopback'}`}`);
+  }
+  return [local, global];
 }
 
-function returnAccountAttempt(userId) {
-  const budget = accountBudgets.get(userId);
-  if (budget) budget.tokens = Math.min(limitsFor(userId).burst, budget.tokens + 1);
+function returnAttempt(taken) {
+  for (const b of taken) if (b) b.tokens = Math.min(b.limits.burst, b.tokens + 1);
 }
 
 function registerFailedLogin(key) {
@@ -520,37 +558,63 @@ function registerFailedLogin(key) {
   return `PIN falsch. ${waitMessage(lockMs)}`;
 }
 
-// A new PIN from the admin lifts every lock on that account and refills its budget.
+// A new PIN from the admin lifts every lock on that account and refills its budgets.
 function clearFailedLogins(userId) {
-  for (const key of deviceFailures.keys()) {
-    if (key.startsWith(`${userId}|`)) deviceFailures.delete(key);
+  for (const map of [deviceFailures, networkBudgets]) {
+    for (const key of map.keys()) {
+      if (key.startsWith(`${userId}|`)) map.delete(key);
+    }
   }
   accountBudgets.delete(userId);
 }
 
-// At most MAX_PARALLEL_PIN_CHECKS logins run scrypt at once, so a flood of logins
-// leaves libuv threads for file access (bids). Trusted devices go first.
+// At most MAX_PARALLEL_PIN_CHECKS scrypt runs at once (logins and new PINs), so a flood of
+// logins leaves libuv threads for file access (bids). Trusted devices and logged-in members
+// take turns with new devices, so neither side can starve the other. When the expected wait
+// is too long the server says so (503) instead of letting pages time out; requests whose
+// page has given up meanwhile are skipped.
 let pinChecksRunning = 0;
+let servedTrusted = false;
+let scryptMs = 60; // running average
 const waitingPinChecks = { trusted: [], other: [] };
 
-async function checkPinLimited(pin, stored, trusted) {
+function nextPinCheck() {
+  const { trusted, other } = waitingPinChecks;
+  const pick = servedTrusted ? (other.shift() || trusted.shift()) : (trusted.shift() || other.shift());
+  return pick;
+}
+
+async function withPinSlot(req, trusted, fn) {
   if (pinChecksRunning < MAX_PARALLEL_PIN_CHECKS) {
     pinChecksRunning += 1;
   } else {
+    const waiting = waitingPinChecks.trusted.length + waitingPinChecks.other.length;
     const queue = trusted ? waitingPinChecks.trusted : waitingPinChecks.other;
-    if (queue.length >= MAX_WAITING_PIN_CHECKS) {
+    if (queue.length >= MAX_WAITING_PIN_CHECKS || ((waiting + 1) * scryptMs) / MAX_PARALLEL_PIN_CHECKS > MAX_PIN_WAIT_MS) {
       throw new HttpError(503, 'Gerade melden sich sehr viele gleichzeitig an. Versuche es in ein paar Sekunden noch einmal.', 5000);
     }
-    await new Promise(resolve => queue.push(resolve));
+    await new Promise(resolve => queue.push({ resolve, trusted }));
   }
   try {
-    return await checkPin(pin, stored);
+    if (req.socket && req.socket.destroyed) throw new HttpError(499, 'Abgebrochen.');
+    const started = Date.now();
+    const result = await fn();
+    scryptMs = scryptMs * 0.8 + (Date.now() - started) * 0.2;
+    return result;
   } finally {
-    const next = waitingPinChecks.trusted.shift() || waitingPinChecks.other.shift();
-    if (next) next(); // hand the slot over
-    else pinChecksRunning -= 1;
+    const next = nextPinCheck();
+    if (next) {
+      servedTrusted = next.trusted;
+      next.resolve(); // hand the slot over
+    } else {
+      pinChecksRunning -= 1;
+    }
   }
 }
+
+const checkPinLimited = (req, pin, stored, trusted) => withPinSlot(req, trusted, () => checkPin(pin, stored));
+// New PINs from logged-in members and the admin (scrypt as well).
+const hashPinLimited = (req, pin) => withPinSlot(req, true, () => hashPin(pin));
 
 // Response shapes
 
@@ -633,19 +697,27 @@ api.post('/login', handle(async (req, res) => {
 
   // Everything that turns an attempt down runs before scrypt.
   const deviceId = deviceIdOf(device);
+  const network = networkOf(req.ip);
   const key = lockKey(user.id, deviceId, req.ip);
   assertDeviceAllowed(key);
+  // One check at a time per device and account, so parallel requests cannot pass the lock.
+  if (loginsInFlight.has(key)) {
+    throw new HttpError(429, 'Die letzte Anmeldung wird noch geprüft. Versuche es gleich noch einmal.', 2000);
+  }
   // A trusted device that typed LOCK_AFTER wrong PINs in a row counts as new until its next right PIN.
   const recent = deviceFailures.get(key);
   const trusted = isTrusted(trust, user, deviceId) && !(recent && recent.count >= LOCK_AFTER);
-  if (!trusted) takeAccountAttempt(user.id);
+  const taken = trusted ? [] : takeAttempt(user.id, network);
 
   let ok;
+  loginsInFlight.add(key);
   try {
-    ok = await checkPinLimited(pin, user.pinHash, trusted);
+    ok = await checkPinLimited(req, pin, user.pinHash, trusted);
   } catch (error) {
-    if (!trusted) returnAccountAttempt(user.id); // not checked (server busy): give it back
+    returnAttempt(taken); // not checked (server busy, page gone): give it back
     throw error;
+  } finally {
+    loginsInFlight.delete(key);
   }
   if (!ok) {
     const message = registerFailedLogin(key);
@@ -653,8 +725,10 @@ api.post('/login', handle(async (req, res) => {
     await audit('login_failed', { userId: user.id, trusted, ...requestInfo(req) });
     throw new HttpError(401, message);
   }
-  if (!trusted) returnAccountAttempt(user.id);
+  returnAttempt(taken);
   deviceFailures.delete(key);
+  // The admin's network (the meeting's WLAN) is exempt from the account-wide budgets.
+  if (isAdminId(user.id)) trustedNetworks.set(network, Date.now() + TRUSTED_NETWORK_MS);
   await audit('login', { userId: user.id, trusted, ...requestInfo(req) });
   res.json({ ...issueSession(user), trust: deviceId ? issueTrust(user, deviceId) : undefined });
 }));
@@ -690,12 +764,17 @@ api.post('/me/contribution', memberOnly, limitWrites, handle(async (req, res) =>
   if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_STEP) {
     throw new HttpError(400, 'Ungültiger Betrag.');
   }
+  const request = typeof req.body.request === 'string' && REQUEST_PATTERN.test(req.body.request) ? req.body.request : null;
   const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
+    // A page that got no answer sends the same step again with the same id: count it once.
+    const recent = own(data.requests, user.id) || [];
+    if (request && recent.includes(request)) return user;
     const from = data.contributions[user.id] || 0;
     const to = round2(Math.min(MAX_AMOUNT, Math.max(0, from + delta)));
     setContribution(data, user.id, to);
-    log('bid', { userId: user.id, name: user.name, from, to, ...requestInfo(req) });
+    if (request) data.requests[user.id] = [...recent, request].slice(-REQUESTS_TO_REMEMBER);
+    log('bid', { userId: user.id, name: user.name, from, to, request: request || undefined, ...requestInfo(req) });
     return user;
   });
   res.json(memberView(data, result));
@@ -728,7 +807,7 @@ api.put('/me/hours', memberOnly, limitWrites, handle(async (req, res) => {
 api.put('/me/pin', memberOnly, limitWrites, handle(async (req, res) => {
   const pin = requirePin(req.body && req.body.pin);
   const deviceId = deviceIdOf(req.body.device);
-  const hash = await hashPin(pin);
+  const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     await setPin(user, pin, { hash });
@@ -755,15 +834,18 @@ api.get('/admin/data', adminOnly, handle(async (req, res) => {
 api.post('/admin/users', adminOnly, handle(async (req, res) => {
   const name = requireName(req.body && req.body.name);
   const chosen = req.body && req.body.pin ? requirePin(req.body.pin) : null;
-  const pin = chosen || randomStartPin();
-  const hash = await hashPin(pin);
+  // An admin page from before the update (no X-Device header) still tells the admin
+  // "Start-PIN: 1234", so it gets that PIN instead of a random one.
+  const random = !chosen && !!req.get('X-Device');
+  const pin = chosen || (random ? randomStartPin() : DEFAULT_PIN);
+  const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     if (data.users.some(u => !isAdminId(u.id) && sameName(u.name, name))) {
       throw new HttpError(409, `„${name}“ ist schon eingetragen.`);
     }
     const nextId = idGenerator(id => data.users.some(u => u.id === id));
     const user = { id: nextId(), name };
-    await setPin(user, pin, { hash, start: chosen ? undefined : true });
+    await setPin(user, pin, { hash, start: random ? true : undefined });
     data.users.push(user);
     log('user_added', { userId: user.id, name: user.name, ...requestInfo(req) });
     return user;
@@ -785,6 +867,7 @@ api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
     data.users = data.users.filter(u => u.id !== userId);
     delete data.contributions[userId];
     delete data.hours[userId];
+    delete data.requests[userId];
     log('user_deleted', { userId, name: user.name, contribution, hours, ...requestInfo(req) });
   });
   clearFailedLogins(userId);
@@ -795,7 +878,7 @@ api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
 // The admin can set the PIN of every account, including their own.
 api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
   const pin = requirePin(req.body && req.body.pin);
-  const hash = await hashPin(pin);
+  const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     const user = data.users.find(u => u.id === req.params.userId);
     if (!user) throw new HttpError(404, 'Dieses Mitglied gibt es nicht mehr.');
@@ -908,6 +991,7 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
     data.users = [admin, ...users];
     data.contributions = contributions;
     data.hours = hours;
+    data.requests = {};
     if (targetAmount) data.targetAmount = targetAmount;
     const after = summary(data);
     log('import', {
