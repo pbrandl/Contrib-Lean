@@ -232,7 +232,7 @@ The notices from `useNotice`/`Notice` in `ui.js` change:
 
 The same full-screen sheet as on touch devices (title, totals strip with preview bar, "Speichern" bottom right), without the keypad. In place of the keypad's amount display the amount is a text field:
 - It gets the focus when the sheet opens and starts with the current value, centered like the keypad's amount.
-- A blinking yellow bar right after the number shows that you can type. The browser's own cursor is hidden, and the cursor always stays at the end.
+- A blinking yellow bar right after the number shows that you can type: square ends, exactly as high as the digits. The browser's own cursor is hidden, and the cursor always stays at the end.
 - Digits, comma or period (both mean the decimal comma) and Backspace follow the keypad's rules (`pressKey`): the same limits and the thousands separator while typing. Arrow keys do nothing, other characters are ignored, and paste keeps the valid part.
 - Enter saves, Esc closes. A click anywhere on the sheet puts the cursor back into the field.
 - There are no hint lines, and hours above 744 cannot be typed.
