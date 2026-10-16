@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -121,12 +121,6 @@ export function deviceId() {
   return currentDevice;
 }
 
-// Id for one bid step. If the page gets no answer it sends the step again with the same
-// id, and the server counts it only once (REQUEST_PATTERN in backend/server.js).
-export function requestId() {
-  return randomDeviceId() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-}
-
 // After a right PIN the server returns a "trusted device" credential for this account.
 // With it, this device can still log in while somebody else is guessing PINs for the
 // account. It is useless without the PIN, so it stays after logging out. Up to 10 accounts
@@ -174,6 +168,29 @@ export const formatNumber = (n) => (Number.isInteger(round2(n)) ? wholeNumber : 
 export const formatEuro = (n) => `${formatNumber(n)}\u00a0€`;
 export const countBids = (n) => (n === 1 ? '1 Gebot' : `${n} Gebote`);
 export const formatHours = (n) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(n);
+// The total of all bids and the Bedarf are shown in whole euros; the server keeps the cents.
+export const formatWhole = (n) => wholeNumber.format(Math.round(n));
+
+// Amounts are stored, sent and summed netto. Brutto is only a display option.
+export const VAT_PERCENT = 19;
+// In whole cents, like toGross in backend/server.js, so half cents round up (12,50 -> 14,88).
+export const toGross = (net) => Math.round((Math.round(net * 100) * (100 + VAT_PERCENT)) / 100) / 100;
+// A brutto amount typed by a member, in netto, rounded up to the cent (agreed: shown as
+// brutto again, it may differ by 1 cent). Integer cents, so 1886,15 gives exactly 1585.
+export const toNet = (gross) => Math.ceil((Math.round(gross * 100) * 100) / (100 + VAT_PERCENT)) / 100;
+export const inMode = (net, mode) => (mode === 'brutto' ? toGross(net) : net);
+
+// Netto or brutto display, stored per device. Default is netto.
+export function useAmountMode(key) {
+  const store = useMemo(() => stored(() => window.localStorage, key), [key]);
+  const [mode, setMode] = useState(() => (store.get() === 'brutto' ? 'brutto' : 'netto'));
+  const toggle = useCallback(() => {
+    const next = mode === 'brutto' ? 'netto' : 'brutto';
+    store.set(next);
+    setMode(next);
+  }, [mode, store]);
+  return [mode, toggle];
+}
 
 // "Müller" is found when searching "muller".
 export const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('de');

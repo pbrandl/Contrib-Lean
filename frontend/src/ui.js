@@ -1,63 +1,65 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
-import { countBids, formatEuro, formatHours, formatNumber, isPin } from './lib';
+import { countBids, formatHours, formatWhole, inMode, isPin } from './lib';
 
 export function Logo({ className }) {
   return <img src={logo} alt="FRANZ!werk Tübingen" width="700" height="600" className={className} />;
 }
 
 // Dark blue band at the top of every page; the yellow logo needs the dark ground.
-// The glow fades out before the top edge, so the band meets the blue page canvas
-// seamlessly when the page is pulled down past the top.
+// The glow fades out before the top edge, so the band meets the blue top of the page
+// canvas seamlessly when the page is pulled down past the top.
 export function Band({ children, className = '' }) {
   return (
     <header className="on-dark relative overflow-hidden bg-werkblau text-white">
       <div className="band-glow" aria-hidden="true" />
-      <div className={`relative mx-auto max-w-xl px-5 ${className}`}>{children}</div>
+      <div className={`wrap relative ${className}`}>{children}</div>
     </header>
   );
 }
 
+// Logo left, the name in the middle, "Abmelden" right.
 export function TopBar({ label, onLogout }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
-      <Logo className="h-14 w-auto shrink-0" />
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-semibold">{label}</span>
-        <button type="button" onClick={onLogout} className="btn min-h-[2.75rem] px-3 text-gelb hover:bg-white/10">
-          Abmelden
-        </button>
-      </div>
+    <div className="topbar">
+      <Logo className="h-14 w-auto" />
+      <span className="topbar-name">{label}</span>
+      <button type="button" onClick={onLogout} className="topbar-logout">Abmelden</button>
     </div>
   );
 }
 
-// Total raised against the need, and the hours per month everybody offers.
-export function Progress({ total, target, count, hours = 0 }) {
+// Netto/brutto: a plain grey text button that shows the current mode and switches it.
+export function ModeToggle({ mode, onToggle }) {
+  const other = mode === 'brutto' ? 'netto' : 'brutto';
+  return (
+    <button type="button" className="text-button" onClick={onToggle} aria-label={`Beträge ${mode}, auf ${other} umschalten`}>
+      {mode === 'brutto' ? 'Brutto' : 'Netto'}
+    </button>
+  );
+}
+
+// Total raised against the need, and the hours per month everybody offers. The euros are
+// shown whole, in the page's netto/brutto mode; `note` follows the Bedarf (" netto").
+export function Progress({ total, target, count, hours = 0, mode = 'netto', note = '' }) {
   const ratio = target > 0 ? total / target : 0;
   const width = Math.min(100, ratio * 100);
   const percent = Math.floor(ratio * 100);
   return (
     <div>
-      <div className="flex items-end justify-between gap-4">
+      <div className="stats">
         <div>
-          <p className="font-display font-bold tracking-tight text-gelb">
-            <span className="text-5xl">{formatNumber(total)}</span>
-            <span className="ml-1.5 text-3xl">€</span>
-          </p>
-          <p className="mt-1 text-white/75">von {formatEuro(target)} Bedarf</p>
+          <p className="stat-big"><span>{formatWhole(inMode(total, mode))}</span><span className="unit">€</span></p>
+          <p className="stat-sub">von {formatWhole(inMode(target, mode))}{'\u00a0'}€{note}</p>
         </div>
-        <div className="text-right">
-          <p className="font-display font-bold tracking-tight text-gelb/70">
-            <span className="text-5xl">{formatHours(hours)}</span>
-            <span className="ml-1.5 text-3xl">h</span>
-          </p>
-          <p className="mt-1 text-white/75">pro Monat</p>
+        <div className="stat-right">
+          <p className="stat-big stat-dim"><span>{formatHours(hours)}</span><span className="unit">h</span></p>
+          <p className="stat-sub">pro Monat</p>
         </div>
       </div>
       <div
-        className="progress-track mt-5"
+        className="progress-track mt-[1.6rem]"
         role="progressbar"
         aria-label="Gedeckter Anteil des Bedarfs"
         aria-valuemin={0}
@@ -66,7 +68,7 @@ export function Progress({ total, target, count, hours = 0 }) {
       >
         <div className="progress-fill" style={{ width: `${width}%` }} />
       </div>
-      <p className="mt-2.5 flex justify-between gap-4 text-sm text-white/75">
+      <p className="mt-[0.8rem] flex justify-between gap-4 text-sm text-white/75">
         <span>{ratio >= 1 ? `Bedarf gedeckt: ${percent} %` : `${percent} % gedeckt`}</span>
         <span>{countBids(count)}</span>
       </p>
@@ -74,23 +76,18 @@ export function Progress({ total, target, count, hours = 0 }) {
   );
 }
 
+// Banner at the top: dark green with a check mark for saved changes, ziegel for errors.
+// A tap closes it; confirmations also disappear on their own (useNotice).
 export function Notice({ notice, onClose }) {
   if (!notice) return null;
   const error = notice.tone === 'error';
   const Icon = error ? AlertTriangle : CheckCircle2;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <div
-        key={notice.at}
-        role={error ? 'alert' : 'status'}
-        className={`notice-in pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl py-2.5 pl-4 pr-2 shadow-card ring-1 ${error ? 'bg-ziegel text-white ring-black/5' : 'bg-white text-tinte ring-tinte/5'}`}
-      >
-        <Icon className={`h-5 w-5 shrink-0 ${error ? '' : 'text-[#2F8F5B]'}`} aria-hidden="true" />
-        <p className="flex-1 text-[0.95rem] font-medium">{notice.text}</p>
-        <button type="button" onClick={onClose} className={`rounded-full p-1.5 ${error ? 'hover:bg-white/10' : 'text-tinte/50 hover:bg-tinte/5'}`} aria-label="Meldung schließen">
-          <X className="h-5 w-5" aria-hidden="true" />
-        </button>
-      </div>
+    <div className="notice-wrap" role={error ? 'alert' : 'status'}>
+      <button type="button" key={notice.at} onClick={onClose} className={`notice notice-in ${error ? 'bg-ziegel' : 'bg-gruen'}`}>
+        <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+        <span className="flex-1">{notice.text}</span>
+      </button>
     </div>
   );
 }
@@ -215,7 +212,7 @@ export function LoadingPage() {
       <Band className="py-3">
         <Logo className="h-14 w-auto" />
       </Band>
-      <main className="mx-auto max-w-xl px-5 py-8">
+      <main className="wrap py-8">
         <p className="text-tinte/70" role="status">Lädt …</p>
       </main>
     </>
@@ -228,7 +225,7 @@ export function OfflinePage({ onRetry }) {
       <Band className="py-3">
         <Logo className="h-14 w-auto" />
       </Band>
-      <main className="mx-auto max-w-xl space-y-4 px-5 py-8">
+      <main className="wrap space-y-4 py-8">
         <h1 className="font-display text-3xl font-bold tracking-tight">Keine Verbindung</h1>
         <p>Der Server antwortet gerade nicht. Prüfe dein Internet und versuche es noch einmal.</p>
         <button type="button" className="btn-blau" onClick={onRetry}>Noch einmal versuchen</button>

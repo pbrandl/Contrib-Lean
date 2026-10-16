@@ -20,7 +20,9 @@ const MAX_AMOUNT = 1000000;
 const MAX_HOURS = 744; // hours in a 31-day month
 const MAX_STEP = 10000; // only for pages from before the new bid entry
 // Bids are netto; brutto (with 19 % VAT) is shown on request and in the export.
-const VAT_RATE = 1.19;
+// Computed in whole cents, like toGross in frontend/src/lib.js, so half cents round up.
+const VAT_PERCENT = 19;
+const toGross = (net) => Math.round((Math.round(net * 100) * (100 + VAT_PERCENT)) / 100) / 100;
 const MAX_NAME_LENGTH = 60;
 const MEMBER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -929,7 +931,7 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
   res.json({
     users: data.users.filter(u => !isAdminId(u.id)).map(u => ({ id: u.id, name: u.name })),
     contributions: data.contributions,
-    contributionsGross: Object.fromEntries(Object.entries(data.contributions).map(([id, net]) => [id, round2(net * VAT_RATE)])),
+    contributionsGross: Object.fromEntries(Object.entries(data.contributions).map(([id, net]) => [id, toGross(net)])),
     hours: data.hours,
     targetAmount: data.targetAmount,
     exportDate: new Date().toISOString()

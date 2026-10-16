@@ -1,4 +1,4 @@
-import { parseAmount } from './lib';
+import { parseAmount, toGross } from './lib';
 
 // Minimal RFC 4180 parser. Detects "," or ";" (German Excel) as delimiter
 // and remembers the line each row starts on, for error messages.
@@ -109,11 +109,15 @@ const quote = (value) => {
 };
 
 // PINs are stored as hashes and cannot be exported; the column stays for compatibility.
+// `contribution` is netto, `contribution_gross` only for reading: the import ignores it.
 // The BOM makes Excel read the file as UTF-8 (umlauts).
 export function membersToCsv(users, contributions, hours = {}) {
   const rows = [
-    ['username', 'pin', 'contribution', 'hours'],
-    ...users.map(u => [guard(u.name), '', String(contributions[u.id] || 0), String(hours[u.id] || 0)])
+    ['username', 'pin', 'contribution', 'contribution_gross', 'hours'],
+    ...users.map(u => {
+      const net = contributions[u.id] || 0;
+      return [guard(u.name), '', String(net), String(toGross(net)), String(hours[u.id] || 0)];
+    })
   ];
   return `\uFEFF${rows.map(r => r.map(quote).join(',')).join('\r\n')}\r\n`;
 }

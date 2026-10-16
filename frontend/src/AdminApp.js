@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
-import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, useNotice, usePolling } from './lib';
+import { ChevronDown, ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
+import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, useAmountMode, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
-import { Band, Callout, LoadingPage, Logo, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { Band, Callout, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 const countMembers = (n) => (n === 1 ? '1 Mitglied' : `${n} Mitglieder`);
 
@@ -51,7 +51,7 @@ function AdminLogin({ onLogin }) {
       <Band className="pb-6 pt-5">
         <Logo className="h-28 w-auto" />
       </Band>
-      <main className="mx-auto max-w-xl px-5 pb-16 pt-6">
+      <main className="wrap pb-16 pt-6">
         <PinLogin title="Admin" intro="Melde dich mit der Admin-PIN an." onSubmit={login}>
           <a href="/" className="btn-leise -ml-2 px-2">
             <ChevronLeft className="h-5 w-5" aria-hidden="true" /> Zur Startseite
@@ -67,6 +67,7 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   const [data, setData] = useState(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [adminPinOpen, setAdminPinOpen] = useState(false);
+  const [mode, toggleMode] = useAmountMode('franzwerk.adminMode');
 
   const apply = useCallback((next) => {
     setData(prev => (isNewer(next, prev) ? next : prev));
@@ -110,14 +111,12 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
 
   return (
     <>
-      <Band>
+      <Band className="pb-8">
         <TopBar label="Admin" onLogout={() => onLogout()} />
-        <div className="pb-6 pt-2">
-          <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} />
-        </div>
+        <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} />
       </Band>
 
-      <main className="mx-auto max-w-xl space-y-10 px-5 pb-24 pt-6">
+      <main className="wrap space-y-7 pb-24 pt-6">
         {data.admin.defaultPin && !adminPinOpen && (
           <Callout action={<button type="button" className="btn-blau" onClick={() => setAdminPinOpen(true)}>Admin-PIN ändern</button>}>
             Die Admin-PIN ist noch 0000. Ändere sie, damit niemand sonst Mitglieder, PINs und Gebote verwalten kann.
@@ -128,14 +127,20 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
         <TargetSection target={data.targetAmount} call={call} showNotice={showNotice} />
         <DataSection memberCount={data.users.length} call={call} showNotice={showNotice} />
 
-        <section aria-labelledby="admin-pin-heading" className="border-t border-tinte/10 pt-6">
-          <h2 id="admin-pin-heading" className="font-display text-2xl font-bold tracking-tight">Admin-PIN</h2>
+        <section aria-labelledby="settings-heading" className="border-t border-tinte/10 pt-6">
+          <h2 id="settings-heading" className="font-display text-2xl font-bold tracking-tight">Einstellungen</h2>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3">
+            <span className="font-semibold">Beträge anzeigen</span>
+            <ModeToggle mode={mode} onToggle={toggleMode} />
+          </div>
+          <p className="text-[0.9rem] text-tinte/70">Gilt nur für deine Ansicht. Gespeichert wird immer netto.</p>
           {adminPinOpen ? (
-            <div className="mt-3">
+            <div className="mt-4">
+              <h3 className="mb-2 font-semibold">Neue Admin-PIN</h3>
               <PinChange idPrefix="admin" onSubmit={changeAdminPin} onCancel={() => setAdminPinOpen(false)} />
             </div>
           ) : (
-            <button type="button" className="btn-rand mt-3" onClick={() => setAdminPinOpen(true)}>Admin-PIN ändern</button>
+            <button type="button" className="btn-rand mt-4" onClick={() => setAdminPinOpen(true)}>Admin-PIN ändern</button>
           )}
         </section>
       </main>
@@ -151,6 +156,8 @@ function MembersSection({ users, call, showNotice }) {
   const [open, setOpen] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [created, setCreated] = useState([]);
+  // With many members the list is folded away, so the other sections are close by.
+  const [expanded, setExpanded] = useState(users.length === 0);
 
   const add = async (e) => {
     e.preventDefault();
@@ -202,138 +209,147 @@ function MembersSection({ users, call, showNotice }) {
 
   return (
     <section aria-labelledby="members-heading">
-      <h2 id="members-heading" className="font-display text-2xl font-bold tracking-tight">Mitglieder</h2>
-      <p className="mt-1 text-tinte/75">
-        {countMembers(users.length)}
-        {withStartPin > 0 && `, ${withStartPin} davon mit Start-PIN`}
-      </p>
+      <button type="button" className="collapse-head" onClick={() => setExpanded(v => !v)} aria-expanded={expanded} aria-controls="members-panel">
+        <span className="min-w-0 flex-1">
+          <span id="members-heading" className="block font-display text-2xl font-bold leading-tight tracking-tight">Mitglieder</span>
+          <span className="block text-[0.9rem] text-tinte/70">
+            {countMembers(users.length)}
+            {withStartPin > 0 && `, ${withStartPin} davon mit Start-PIN`}
+          </span>
+        </span>
+        <ChevronDown aria-hidden="true" />
+      </button>
 
-      <form onSubmit={add} noValidate className="mt-4">
-        <label htmlFor="new-member" className="mb-1 block font-semibold">Mitglied eintragen</label>
-        <div className="flex gap-2">
-          <input
-            id="new-member"
-            value={name}
-            onChange={(e) => { setName(e.target.value); setAddError(''); }}
-            placeholder="Name"
-            autoComplete="off"
-            maxLength={60}
-            className="field min-w-0 flex-1"
-          />
-          <button type="submit" className="btn-blau" disabled={adding}>Eintragen</button>
-        </div>
-        {addError ? (
-          <p className="mt-1 font-semibold text-ziegel" role="alert">{addError}</p>
-        ) : (
-          <p className="mt-1 text-tinte/70">Neue Mitglieder bekommen eine zufällige Start-PIN. Sie wird nach dem Eintragen angezeigt.</p>
+      <div id="members-panel">
+        {expanded && (
+          <form onSubmit={add} noValidate className="mt-4">
+            <label htmlFor="new-member" className="mb-1 block font-semibold">Mitglied eintragen</label>
+            <div className="flex gap-2">
+              <input
+                id="new-member"
+                value={name}
+                onChange={(e) => { setName(e.target.value); setAddError(''); }}
+                placeholder="Name"
+                autoComplete="off"
+                maxLength={60}
+                className="field min-w-0 flex-1"
+              />
+              <button type="submit" className="btn-blau" disabled={adding}>Eintragen</button>
+            </div>
+            {addError ? (
+              <p className="mt-1 font-semibold text-ziegel" role="alert">{addError}</p>
+            ) : (
+              <p className="mt-1 text-tinte/70">Neue Mitglieder bekommen eine zufällige Start-PIN. Sie wird nach dem Eintragen angezeigt.</p>
+            )}
+          </form>
         )}
-      </form>
 
-      {created.length > 0 && (
-        <div className="mt-4 space-y-3 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
-          <ul className="space-y-2">
-            {created.map(entry => (
-              <li key={entry.id}>
-                <p className="break-words">{entry.name} ist eingetragen. Start-PIN:</p>
-                <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{entry.pin}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="text-tinte/75">
-            Gib die {created.length === 1 ? 'PIN' : 'PINs'} direkt weiter. Sie {created.length === 1 ? 'wird' : 'werden'} nur jetzt angezeigt. Später kannst du mit „PIN setzen“ eine neue vergeben.
-          </p>
-          <button type="button" className="btn-rand" onClick={() => setCreated([])}>Fertig</button>
-        </div>
-      )}
+        {created.length > 0 && (
+          <div className="mt-4 space-y-3 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
+            <ul className="space-y-2">
+              {created.map(entry => (
+                <li key={entry.id}>
+                  <p className="break-words">{entry.name} ist eingetragen. Start-PIN:</p>
+                  <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{entry.pin}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-tinte/75">
+              Gib die {created.length === 1 ? 'PIN' : 'PINs'} direkt weiter. Sie {created.length === 1 ? 'wird' : 'werden'} nur jetzt angezeigt. Später kannst du mit „PIN setzen“ eine neue vergeben.
+            </p>
+            <button type="button" className="btn-rand" onClick={() => setCreated([])}>Fertig</button>
+          </div>
+        )}
 
-      {users.length > 0 && (
-        <div className="relative mt-6">
-          <label htmlFor="member-search" className="sr-only">Mitglied suchen</label>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-tinte/50" aria-hidden="true" />
-          <input
-            id="member-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Mitglied suchen"
-            autoComplete="off"
-            className="field pl-10 pr-11"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-tinte/60 hover:text-tinte"
-              aria-label="Suche leeren"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
-          )}
-        </div>
-      )}
+        {expanded && users.length > 0 && (
+          <div className="relative mt-6">
+            <label htmlFor="member-search" className="sr-only">Mitglied suchen</label>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-tinte/50" aria-hidden="true" />
+            <input
+              id="member-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Mitglied suchen"
+              autoComplete="off"
+              className="field pl-10 pr-11"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-tinte/60 hover:text-tinte"
+                aria-label="Suche leeren"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
 
-      {users.length > 0 && matches.length === 0 && (
-        <p className="mt-4 text-tinte/75">Kein Mitglied passt zu „{query.trim()}“.</p>
-      )}
+        {expanded && users.length > 0 && matches.length === 0 && (
+          <p className="mt-4 text-tinte/75">Kein Mitglied passt zu „{query.trim()}“.</p>
+        )}
 
-      {matches.length > 0 && (
-        <ul className="mt-3 divide-y divide-tinte/10 border-y border-tinte/10">
-          {matches.map(user => {
-            const mode = open && open.id === user.id ? open.mode : null;
-            return (
-              <li key={user.id} className="py-3">
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                  <div className="min-w-0">
-                    <p className="break-words text-lg font-semibold">{user.name}</p>
-                    {user.defaultPin && <p className="text-tinte/70">Start-PIN</p>}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-rand min-h-[2.75rem] px-3"
-                      onClick={() => toggle(user.id, 'pin')}
-                      aria-expanded={mode === 'pin'}
-                    >
-                      PIN setzen
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-rand min-h-[2.75rem] px-3 text-ziegel"
-                      onClick={() => toggle(user.id, 'delete')}
-                      aria-expanded={mode === 'delete'}
-                      aria-label={`${user.name} löschen`}
-                    >
-                      <Trash2 className="h-5 w-5" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-
-                {mode === 'pin' && (
-                  <div className="mt-3">
-                    <PinChange idPrefix={`pin-${user.id}`} confirm={false} onSubmit={(pin) => setPin(user, pin)} onCancel={() => setOpen(null)} />
-                  </div>
-                )}
-
-                {mode === 'delete' && (
-                  <div className="mt-3 space-y-3 rounded border-2 border-ziegel/30 p-4">
-                    <p>
-                      {user.name} löschen? Das Gebot wird ebenfalls gelöscht. Das lässt sich hier nicht rückgängig machen.
-                    </p>
+        {expanded && matches.length > 0 && (
+          <ul className="mt-3 divide-y divide-tinte/10 border-y border-tinte/10">
+            {matches.map(user => {
+              const mode = open && open.id === user.id ? open.mode : null;
+              return (
+                <li key={user.id} className="py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <div className="min-w-0">
+                      <p className="break-words text-lg font-semibold">{user.name}</p>
+                      {user.defaultPin && <p className="text-tinte/70">Start-PIN</p>}
+                    </div>
                     <div className="flex gap-2">
-                      <button type="button" className="btn-ziegel flex-1" onClick={() => remove(user)} disabled={deleting}>
-                        {deleting ? 'Wird gelöscht …' : 'Löschen'}
+                      <button
+                        type="button"
+                        className="btn-rand min-h-[2.75rem] px-3"
+                        onClick={() => toggle(user.id, 'pin')}
+                        aria-expanded={mode === 'pin'}
+                      >
+                        PIN setzen
                       </button>
-                      <button type="button" className="btn-rand flex-1" onClick={() => setOpen(null)} disabled={deleting}>
-                        Abbrechen
+                      <button
+                        type="button"
+                        className="btn-rand min-h-[2.75rem] px-3 text-ziegel"
+                        onClick={() => toggle(user.id, 'delete')}
+                        aria-expanded={mode === 'delete'}
+                        aria-label={`${user.name} löschen`}
+                      >
+                        <Trash2 className="h-5 w-5" aria-hidden="true" />
                       </button>
                     </div>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+
+                  {mode === 'pin' && (
+                    <div className="mt-3">
+                      <PinChange idPrefix={`pin-${user.id}`} confirm={false} onSubmit={(pin) => setPin(user, pin)} onCancel={() => setOpen(null)} />
+                    </div>
+                  )}
+
+                  {mode === 'delete' && (
+                    <div className="mt-3 space-y-3 rounded border-2 border-ziegel/30 p-4">
+                      <p>
+                        {user.name} löschen? Das Gebot wird ebenfalls gelöscht. Das lässt sich hier nicht rückgängig machen.
+                      </p>
+                      <div className="flex gap-2">
+                        <button type="button" className="btn-ziegel flex-1" onClick={() => remove(user)} disabled={deleting}>
+                          {deleting ? 'Wird gelöscht …' : 'Löschen'}
+                        </button>
+                        <button type="button" className="btn-rand flex-1" onClick={() => setOpen(null)} disabled={deleting}>
+                          Abbrechen
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }
@@ -355,7 +371,7 @@ function TargetSection({ target, call, showNotice }) {
     try {
       await call('/admin/target', { method: 'PUT', body: { targetAmount: amount } });
       setValue('');
-      showNotice('ok', `Der Bedarf ist jetzt ${formatEuro(amount)}.`);
+      showNotice('ok', `Der Bedarf ist jetzt ${formatEuro(amount)} netto.`);
     } catch (err) {
       if (err.status !== 401) setError(err.message);
     }
@@ -365,9 +381,9 @@ function TargetSection({ target, call, showNotice }) {
   return (
     <section aria-labelledby="target-heading" className="border-t border-tinte/10 pt-6">
       <h2 id="target-heading" className="font-display text-2xl font-bold tracking-tight">Bedarf</h2>
-      <p className="mt-1 text-tinte/75">Aktuell {formatEuro(target)}</p>
+      <p className="mt-1 text-tinte/75">Aktuell {formatEuro(target)} netto</p>
       <form onSubmit={save} noValidate className="mt-4">
-        <label htmlFor="target" className="mb-1 block font-semibold">Neuer Bedarf in Euro</label>
+        <label htmlFor="target" className="mb-1 block font-semibold">Neuer Bedarf in Euro (netto)</label>
         <div className="flex gap-2">
           <input
             id="target"
@@ -475,7 +491,7 @@ function DataSection({ memberCount, call, showNotice }) {
           <Download className="h-5 w-5" aria-hidden="true" /> JSON-Export
         </button>
       </div>
-      <p className="mt-2 text-tinte/70">Exporte enthalten Namen und Gebote, aber keine PINs.</p>
+      <p className="mt-2 text-tinte/70">Exporte enthalten Namen, Stunden und jedes Gebot netto und brutto, aber keine PINs.</p>
 
       <h3 className="mt-6 font-semibold">Importieren</h3>
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -489,7 +505,7 @@ function DataSection({ memberCount, call, showNotice }) {
         </label>
       </div>
       <p className="mt-2 text-tinte/70">
-        CSV-Format: username,pin,contribution,hours. Ein Import ersetzt alle Mitglieder, Gebote und Stunden.
+        CSV-Format: username,pin,contribution,hours, Gebote netto. Ein Import ersetzt alle Mitglieder, Gebote und Stunden.
       </p>
 
       {error && <p className="mt-3 font-semibold text-ziegel" role="alert">{error}</p>}
@@ -498,12 +514,12 @@ function DataSection({ memberCount, call, showNotice }) {
         <div className="mt-4 space-y-3 rounded border-2 border-ziegel/30 p-4">
           <p className="break-words font-semibold">{pending.fileName}</p>
           <p>
-            {countMembers(pending.count)}, Gebote zusammen {formatEuro(pending.total)}
-            {pending.target ? `, Bedarf ${formatEuro(pending.target)}` : ''}.
+            {countMembers(pending.count)}, Gebote zusammen {formatEuro(pending.total)} netto
+            {pending.target ? `, Bedarf ${formatEuro(pending.target)} netto` : ''}.
           </p>
           <p>
             Der Import ersetzt alle {countMembers(memberCount)}, Gebote und Stunden. Wer schon eingetragen ist,
-            behält die bisherige PIN, wenn die Datei keine PIN enthält. Neue Mitglieder bekommen die Start-PIN 1234.
+            behält die bisherige PIN, wenn die Datei keine PIN enthält. Neue Mitglieder ohne PIN in der Datei bekommen die Start-PIN 1234.
           </p>
           <div className="flex gap-2">
             <button type="button" className="btn-ziegel flex-1" onClick={runImport} disabled={busy}>

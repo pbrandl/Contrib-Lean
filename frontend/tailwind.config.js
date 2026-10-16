@@ -15,6 +15,7 @@ module.exports = {
         papier: '#F5F7F9',
         tinte: '#14232F',
         ziegel: '#A63A28',
+        gruen: '#23774A',
       },
       fontFamily: {
         sans: ['"Inter Variable"', 'Inter', 'system-ui', 'sans-serif'],

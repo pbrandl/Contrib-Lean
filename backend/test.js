@@ -495,7 +495,7 @@ async function check(name, fn) {
     assert.equal(res.body.hours[memberId], 6);
     assert.deepEqual(Object.keys(res.body.contributionsGross).sort(), Object.keys(res.body.contributions).sort());
     for (const [id, net] of Object.entries(res.body.contributions)) {
-      assert.equal(res.body.contributionsGross[id], Math.round(net * 1.19 * 100) / 100);
+      assert.equal(res.body.contributionsGross[id], Math.round((Math.round(net * 100) * 119) / 100) / 100);
     }
     assert.doesNotMatch(res.raw, /pin|scrypt/i);
   });

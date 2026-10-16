@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, Search, X } from 'lucide-react';
-import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, rememberTrust, requestId, round2, useNotice, usePolling } from './lib';
-import { Band, Callout, LoadingPage, Logo, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { api, byName, deviceId, fold, formatHours, formatNumber, inMode, isNewer, loginWithPin, memberSession, rememberTrust, useAmountMode, useNotice, usePolling } from './lib';
+import { Band, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import AmountSheet, { usesKeypad } from './AmountSheet';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
 function initials(name) {
@@ -37,7 +38,7 @@ export default function MemberApp() {
   return (
     <>
       {session
-        ? <MemberPage session={session} onSession={login} onLogout={logout} showNotice={showNotice} />
+        ? <MemberPage session={session} onSession={login} onLogout={logout} showNotice={showNotice} clearNotice={clearNotice} />
         : <FrontPage onLogin={login} />}
       <Notice notice={notice} onClose={clearNotice} />
     </>
@@ -118,10 +119,10 @@ function FrontPage({ onLogin }) {
           <Logo className="h-14 w-auto" />
         </Band>
       ) : (
-        <Band className="pb-16 pt-6">
+        <Band className="pb-[3.9rem] pt-6">
           <Logo className="h-28 w-auto sm:h-32" />
-          <div className="mt-8">
-            <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} />
+          <div className="mt-5">
+            <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} note=" netto" />
           </div>
         </Band>
       )}
@@ -129,20 +130,20 @@ function FrontPage({ onLogin }) {
       {/* relative: the card overlaps the header and must be drawn above it. While searching,
           the page keeps at least one screen height, so a shorter result list cannot pull
           the page back to the top. */}
-      <main className={`relative mx-auto max-w-xl px-5 pb-16 ${selected ? 'pt-6' : '-mt-8'} ${searching || query ? 'min-h-[calc(100svh+8rem)]' : ''}`}>
+      <main className={`wrap relative pb-16 ${selected ? 'pt-6' : '-mt-8'} ${searching || query ? 'min-h-[calc(100svh+8rem)]' : ''}`}>
         {selected ? (
           <div className="space-y-3">
             <button type="button" onClick={back} className="btn-leise -ml-2 px-3">
               <ChevronLeft className="h-5 w-5" aria-hidden="true" /> Anderer Name
             </button>
-            <div className="card p-5 sm:p-6">
+            <div className="card p-4 sm:p-6">
               <PinLogin title={selected.name} intro="Gib deine PIN ein, um dein Gebot abzugeben." onSubmit={login}>
                 <p className="text-sm text-tinte/60">PIN vergessen? Ein Admin kann dir eine neue setzen.</p>
               </PinLogin>
             </div>
           </div>
         ) : (
-          <div className="card p-5 sm:p-6">
+          <div className="card p-4 sm:p-6">
             <h1 className="font-display text-2xl font-bold tracking-tight">Wähle deinen Namen</h1>
 
             {members.length === 0 ? (
@@ -216,40 +217,48 @@ function FrontPage({ onLogin }) {
   );
 }
 
-// Member page: own bid, hours per month, PIN change.
+// Member page: own bid and hours, each changed on a full-screen sheet, and the PIN change.
 
-const STEPS = [5, 10, 25, 50];
-const STEP_RETRIES = 3;
+const SAVE_RETRIES = 3;
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// "6", "6,5", "6.5 h" -> number of hours, NaN if not a number.
-function parseHours(input) {
-  const s = String(input).replace(/h|std\.?|stunden/gi, '').replace(/\s/g, '').replace(',', '.');
-  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
-}
-
-function MemberPage({ session, onSession, onLogout, showNotice }) {
+function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
   const { token } = session;
   const [me, setMe] = useState(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [queued, setQueued] = useState(0);
-  const [inFlight, setInFlight] = useState(0);
-  const [resetting, setResetting] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
+  const [mode, toggleMode] = useAmountMode('franzwerk.mode');
+  const [sheet, setSheet] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
-  const queueRef = useRef(0);
   const sendingRef = useRef(false);
+  const moneyButton = useRef(null);
+  const hoursButton = useRef(null);
+  const lastSheet = useRef(null);
 
   // The back gesture leaves the member page and logs out. A fresh entry is pushed on
   // every start (also after a reload), so going back is always a same-page step.
+  // An open sheet has an entry of its own, so the back gesture only closes it.
   useEffect(() => {
     if (isMemberEntry()) window.history.replaceState(null, '');
     window.history.pushState({ member: true }, '');
     const onPop = () => {
       if (!isMemberEntry()) onLogout();
+      else if (!window.history.state.sheet) setSheet(null);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [onLogout]);
+
+  // After the sheet closes, the focus goes back to the button that opened it.
+  useEffect(() => {
+    if (sheet) {
+      lastSheet.current = sheet.kind;
+    } else if (lastSheet.current) {
+      const opener = lastSheet.current === 'money' ? moneyButton.current : hoursButton.current;
+      if (opener) opener.focus({ preventScroll: true });
+      lastSheet.current = null;
+    }
+  }, [sheet]);
 
   const apply = useCallback((next) => {
     setMe(prev => (isNewer(next, prev) ? next : prev));
@@ -271,91 +280,62 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
   }, [load]);
   usePolling(load, 10000);
 
-  // Clicks are collected while a request runs and sent as one step afterwards.
-  // The server adds each step to the stored bid, so no click gets lost.
-  const flush = useCallback(async () => {
-    if (sendingRef.current) return;
+  // A banner from the last change would cover the sheet's close button.
+  const openSheet = (kind) => {
+    clearNotice();
+    window.history.pushState({ member: true, sheet: true }, '');
+    setSheet({ kind, keypad: usesKeypad() });
+  };
+
+  const closeSheet = useCallback(() => {
+    setSheet(null);
+    if (window.history.state && window.history.state.sheet) window.history.back();
+  }, []);
+
+  // The bid and the hours are absolute values, so a request without an answer can simply
+  // go out again: the server stores the same value twice and nothing is doubled.
+  const save = useCallback(async (value) => {
+    const kind = sheet && sheet.kind;
+    if (!kind) return;
+    const path = kind === 'money' ? '/me/contribution' : '/me/hours';
+    const body = kind === 'money' ? { amount: value } : { hours: value };
     sendingRef.current = true;
+    setSaving(true);
     let saved = null;
-    while (queueRef.current !== 0) {
-      const delta = round2(queueRef.current);
-      queueRef.current = 0;
-      setQueued(0);
-      setInFlight(delta);
-      // Without an answer the same step goes out again with the same id; the server
-      // counts it only once, so nothing is lost and nothing is doubled.
-      const body = { delta, request: requestId() };
-      try {
-        for (let attempt = 0; ; attempt += 1) {
-          try {
-            saved = await api('/me/contribution', { method: 'POST', token, body });
-            break;
-          } catch (err) {
-            if (err.status !== 0 || attempt >= STEP_RETRIES) throw err;
-            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-          }
+    let failure = null;
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          saved = await api(path, { method: 'PUT', token, body });
+          break;
+        } catch (err) {
+          if (err.status !== 0 || attempt >= SAVE_RETRIES) throw err;
+          await wait(1000 * (attempt + 1));
         }
-        apply(saved);
-      } catch (err) {
-        queueRef.current = 0;
-        setQueued(0);
-        setInFlight(0);
-        sendingRef.current = false;
-        if (err.status === 401) {
-          onLogout(err.message);
-        } else {
-          // Without an answer the step may still have been saved: show the server's state.
-          showNotice('error', err.status === 0 ? `${err.message} Dein Gebot wird neu geladen, bitte prüfe es.` : `Nicht gespeichert. ${err.message}`);
-          load();
-        }
-        return;
       }
+    } catch (err) {
+      failure = err;
     }
-    setInFlight(0);
     sendingRef.current = false;
-    if (saved) showNotice('ok', `Gespeichert: dein Gebot ist jetzt ${formatNumber(saved.contribution)} €.`);
-  }, [token, apply, load, onLogout, showNotice]);
+    setSaving(false);
+    if (saved) {
+      apply(saved);
+      closeSheet();
+      if (kind === 'hours') showNotice('ok', `Dein Stundenbeitrag ist jetzt ${formatHours(saved.hours)} h.`);
+      else if (saved.contribution > 0) showNotice('ok', `Dein Beitrag ist jetzt ${formatNumber(inMode(saved.contribution, mode))} €.`);
+      else showNotice('ok', 'Dein Beitrag ist zurückgezogen.');
+    } else if (failure.status === 401) {
+      onLogout(failure.message);
+    } else if (failure.status === 0) {
+      // Without an answer it may still have been saved: show the server's state.
+      showNotice('error', `${failure.message} Dein ${kind === 'money' ? 'Beitrag' : 'Stundenbeitrag'} wird neu geladen, bitte prüfe ihn.`);
+      load();
+    } else {
+      showNotice('error', `Nicht gespeichert. ${failure.message}`);
+    }
+  }, [sheet, token, mode, apply, closeSheet, load, onLogout, showNotice]);
 
   if (!me) return loadFailed ? <OfflinePage onRetry={load} /> : <LoadingPage />;
-
-  const shown = Math.max(0, round2(me.contribution + inFlight + queued));
-  const saving = inFlight !== 0 || queued !== 0;
-
-  const bid = (step) => {
-    setConfirmReset(false);
-    queueRef.current = round2(queueRef.current + step);
-    setQueued(queueRef.current);
-    flush();
-  };
-
-  const reset = async () => {
-    setResetting(true);
-    try {
-      apply(await api('/me/contribution/withdraw', { method: 'POST', token }));
-      setConfirmReset(false);
-      showNotice('ok', 'Gespeichert: dein Gebot ist zurückgesetzt.');
-    } catch (err) {
-      if (err.status === 401) onLogout(err.message);
-      else {
-        showNotice('error', err.status === 0 ? `${err.message} Dein Gebot wird neu geladen, bitte prüfe es.` : `Nicht zurückgesetzt. ${err.message}`);
-        load();
-      }
-    }
-    setResetting(false);
-  };
-
-  const saveHours = async (hours) => {
-    try {
-      const data = await api('/me/hours', { method: 'PUT', token, body: { hours } });
-      apply(data);
-      showNotice('ok', `Gespeichert: ${formatHours(data.hours)} h pro Monat.`);
-      return true;
-    } catch (err) {
-      if (err.status === 401) onLogout(err.message);
-      else showNotice('error', `Nicht gespeichert. ${err.message}`);
-      return false;
-    }
-  };
 
   const changePin = async (pin) => {
     try {
@@ -364,7 +344,7 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
       onSession(data.session);
       apply(data);
       setPinOpen(false);
-      showNotice('ok', 'Gespeichert: deine neue PIN gilt ab sofort.');
+      showNotice('ok', 'Deine neue PIN gilt ab sofort.');
     } catch (err) {
       if (err.status === 401) onLogout(err.message);
       else throw err;
@@ -373,164 +353,61 @@ function MemberPage({ session, onSession, onLogout, showNotice }) {
 
   return (
     <>
-      <Band className="pb-16">
-        <TopBar label={me.user.name} onLogout={() => onLogout()} />
-        <div className="pt-4">
-          <Progress total={me.totalRaised} target={me.targetAmount} count={me.contributorCount} hours={me.totalHours} />
-        </div>
-      </Band>
+      {/* inert: behind the open sheet nothing can be reached with the keyboard. */}
+      <div inert={sheet ? true : undefined}>
+        <Band className="pb-[3.9rem]">
+          <TopBar label={me.user.name} onLogout={() => onLogout()} />
+          <Progress total={me.totalRaised} target={me.targetAmount} count={me.contributorCount} hours={me.totalHours} mode={mode} />
+        </Band>
 
-      <main className="relative mx-auto -mt-8 max-w-xl space-y-4 px-5 pb-24">
-        {me.user.defaultPin && !pinOpen && (
-          <Callout action={<button type="button" className="btn-blau min-h-[2.75rem]" onClick={() => setPinOpen(true)}>Eigene PIN wählen</button>}>
-            Du nutzt noch die Start-PIN. Wähle eine eigene, damit niemand sonst in deinem Namen bieten kann.
-          </Callout>
-        )}
+        <main className="wrap relative -mt-8 grid gap-3 pb-8">
+          <section aria-labelledby="bid-heading" className="card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <h1 id="bid-heading" className="font-display text-2xl font-bold tracking-tight">Dein Beitrag</h1>
+              <ModeToggle mode={mode} onToggle={toggleMode} />
+            </div>
 
-        <section aria-labelledby="bid-heading" className="card p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h1 id="bid-heading" className="font-display text-2xl font-bold tracking-tight">Dein Gebot</h1>
-            <button
-              type="button"
-              className="chip bg-papier text-tinte/70 hover:bg-[#FBEDEA] hover:text-ziegel"
-              onClick={() => setConfirmReset(true)}
-              disabled={shown <= 0 || saving || resetting}
-              aria-expanded={confirmReset}
-            >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reset
-            </button>
-          </div>
+            <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="own-value" aria-live="polite">
+                <span className="sr-only">Beitrag: </span>
+                <span data-testid="own-amount">{formatNumber(inMode(me.contribution, mode))}</span>
+                <span className="unit">€</span>
+              </p>
+              <p className="own-value ml-auto text-right text-werkblau" aria-live="polite">
+                <span className="sr-only">Stunden pro Monat: </span>
+                <span data-testid="own-hours">{formatHours(me.hours)}</span>
+                <span className="unit">h</span>
+              </p>
+            </div>
 
-          {confirmReset && (
-            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-[#FBEDEA] px-4 py-3">
-              <p className="flex-1 text-[0.95rem]">Gebot von {formatNumber(shown)} € auf 0 € setzen?</p>
-              <div className="flex gap-2">
-                <button type="button" className="chip bg-ziegel text-white hover:bg-[#8E2F1F]" onClick={reset} disabled={resetting}>
-                  Zurücksetzen
-                </button>
-                <button type="button" className="chip bg-white text-tinte hover:bg-papier" onClick={() => setConfirmReset(false)} disabled={resetting}>
-                  Abbrechen
-                </button>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button ref={moneyButton} type="button" className="big-btn" onClick={() => openSheet('money')}>
+                Beitrag ändern
+              </button>
+              <button ref={hoursButton} type="button" className="big-btn" lang="de" onClick={() => openSheet('hours')}>
+                Stunden ändern
+              </button>
+            </div>
+          </section>
+
+          {pinOpen ? (
+            <section aria-labelledby="pin-heading" className="card p-4">
+              <h2 id="pin-heading" className="font-display text-xl font-bold tracking-tight">Neue PIN</h2>
+              <div className="mt-3">
+                <PinChange idPrefix="own" onSubmit={changePin} onCancel={() => setPinOpen(false)} />
               </div>
+            </section>
+          ) : (
+            <div className="flex justify-center">
+              <button type="button" className="text-button" onClick={() => setPinOpen(true)}>PIN ändern</button>
             </div>
           )}
+        </main>
+      </div>
 
-          <p className="mt-4 font-display font-bold tracking-tight" aria-live="polite">
-            <span className="text-6xl">{formatNumber(shown)}</span>
-            <span className="ml-2 text-4xl text-tinte/50">€</span>
-          </p>
-
-          <div className="mt-6 grid grid-cols-4 gap-2">
-            {STEPS.map(step => (
-              <button
-                key={step}
-                type="button"
-                onClick={() => bid(step)}
-                disabled={resetting}
-                className="bid-step"
-                aria-label={`${step} Euro dazu`}
-              >
-                +{step}
-                <span className="ml-0.5 text-sm font-semibold opacity-60">€</span>
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => bid(-1)}
-              disabled={resetting || shown <= 0}
-              className="bid-fine"
-              aria-label="1 Euro weniger"
-            >
-              <Minus className="h-4 w-4" aria-hidden="true" /> 1 €
-            </button>
-            <button
-              type="button"
-              onClick={() => bid(1)}
-              disabled={resetting}
-              className="bid-fine"
-              aria-label="1 Euro dazu"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" /> 1 €
-            </button>
-          </div>
-        </section>
-
-        <HoursCard hours={me.hours} onSave={saveHours} />
-
-        <section aria-labelledby="pin-heading" className="card p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h2 id="pin-heading" className="font-display text-xl font-bold tracking-tight">Deine PIN</h2>
-            {!pinOpen && (
-              <button type="button" className="chip bg-papier text-tinte/80 hover:bg-blau-hell" onClick={() => setPinOpen(true)}>
-                PIN ändern
-              </button>
-            )}
-          </div>
-          {pinOpen && (
-            <div className="mt-4">
-              <PinChange idPrefix="own" onSubmit={changePin} onCancel={() => setPinOpen(false)} />
-            </div>
-          )}
-        </section>
-      </main>
+      {sheet && (
+        <AmountSheet kind={sheet.kind} keypad={sheet.keypad} me={me} mode={mode} busy={saving} onSave={save} onClose={closeSheet} />
+      )}
     </>
-  );
-}
-
-function HoursCard({ hours, onSave }) {
-  const [value, setValue] = useState(hours ? formatHours(hours) : '');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
-
-  // Follow changes from another device, unless the member is typing.
-  useEffect(() => {
-    if (!editing) setValue(hours ? formatHours(hours) : '');
-  }, [hours, editing]);
-
-  const parsed = value.trim() === '' ? 0 : parseHours(value);
-  const unchanged = Number.isFinite(parsed) && Math.round(parsed * 2) / 2 === hours;
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!Number.isFinite(parsed) || parsed > 744) {
-      setError('Gib eine Zahl zwischen 0 und 744 ein, zum Beispiel 4 oder 2,5.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    if (await onSave(parsed)) setEditing(false);
-    setBusy(false);
-  };
-
-  return (
-    <section aria-labelledby="hours-heading" className="card p-5 sm:p-6">
-      <h2 id="hours-heading" className="font-display text-xl font-bold tracking-tight">Dein Stundengebot</h2>
-      <p className="mt-1.5 text-[0.95rem] text-tinte/65">
-        Mit deinem Stundengebot gibst du an wie viele Stunden pro Monat du dich einbringen kannst.
-      </p>
-      <form onSubmit={submit} noValidate className="mt-4 flex gap-2">
-        <div className="relative min-w-0 flex-1">
-          <label htmlFor="hours" className="sr-only">Stunden pro Monat</label>
-          <input
-            id="hours"
-            inputMode="decimal"
-            autoComplete="off"
-            value={value}
-            onChange={(e) => { setValue(e.target.value); setEditing(true); setError(''); }}
-            onBlur={() => { if (unchanged) setEditing(false); }}
-            placeholder="0"
-            className="field pr-28 text-lg font-semibold"
-          />
-          <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-tinte/50">h pro Monat</span>
-        </div>
-        <button type="submit" className="btn-blau" disabled={busy || unchanged}>
-          Speichern
-        </button>
-      </form>
-      {error && <p className="mt-2 text-sm font-semibold text-ziegel" role="alert">{error}</p>}
-    </section>
   );
 }

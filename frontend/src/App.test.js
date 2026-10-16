@@ -21,7 +21,7 @@ test('front page shows logo, progress and member list without PINs', async () =>
   render(<App />);
   expect(await screen.findByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
   expect(screen.getByAltText('FRANZ!werk Tübingen')).toBeInTheDocument();
-  expect(screen.getByText('von 6.500 € Bedarf')).toBeInTheDocument();
+  expect(screen.getByText('von 6.500 € netto')).toBeInTheDocument();
   expect(screen.getByText('12,5')).toBeInTheDocument();
   expect(screen.getByText('pro Monat')).toBeInTheDocument();
   const names = screen.getAllByRole('listitem').map(li => li.querySelector('button').textContent);
