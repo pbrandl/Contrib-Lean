@@ -23,6 +23,7 @@ node test.js /nonexistent           # same, but against a fresh database (admin 
 ```
 
 `test.js` is one sequential script: later checks reuse tokens and members from earlier ones, so a single check cannot run on its own. The admin checks log in with PIN `0000`. Against a copy of a real database where the admin PIN was changed they fail, so use a fresh database. It uses global `fetch` (Node 18+).
+It replaces `Date.now` with an adjustable clock: every check starts 10 s later (that refills the write budgets), and lock checks move the clock forward instead of waiting.
 
 Frontend (`frontend/`):
 
@@ -33,6 +34,8 @@ CI=true npx react-scripts test --watchAll=false src/csv.test.js      # one file
 CI=true npx react-scripts test --watchAll=false -t "round-trips"     # one test by name
 CI=true npm run build               # ESLint runs inside the build; CI=true turns warnings into errors
 ```
+
+`frontend/.env` sets `INLINE_RUNTIME_CHUNK=false`. Keep it: the Content-Security-Policy in `public/.htaccess` forbids inline scripts, and without it the built `index.html` would contain one.
 
 There is no separate lint script. `npm start` has no dev proxy and the backend sends no CORS headers, so the dev server cannot reach the API. To run the whole app locally, serve the build from the backend's own `app`: require `backend/server.js`, add `express.static('frontend/build')` and a `/admin` route that sends `index.html`, then call `start()`.
 
@@ -57,21 +60,30 @@ Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/ad
 - `contributions` / `hours`: maps from user id to value. They only hold values > 0; `setContribution`/`setHours` delete the key at 0.
 - `rev`: grows with every write.
 
-Next to it: `audit.log` (one JSON line per change), `backups/` (daily copy plus one before every import) and `session-secret`. `migrateDatabase()` runs at startup and converts the old plain-text-PIN format.
+Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip`, `ua` and an 8-character device prefix; never a PIN), `backups/` (daily and hourly copies, plus one before every import; a failing backup is logged and does not stop the write) and `session-secret` (only created when missing or shorter than 32 bytes; an unreadable file stops the start). `migrateDatabase()` runs at startup and converts the old plain-text-PIN format.
 
 ### Write path (keep these invariants)
 
-- **Every change goes through `mutate(change)`.** It is a single promise queue: it re-reads the file, runs `change(data)`, increments `rev`, makes the daily backup and writes atomically (tmp file + fsync + rename). Throwing an `HttpError` inside `change` aborts without writing. Reads (`authenticate`, `/public`) read the file directly, outside the queue.
+- **Every change goes through `mutate(change)`.** It is a single promise queue: it re-reads the file, runs `change(data, log)`, increments `rev`, makes the backups and writes atomically (tmp file + fsync + rename). Throwing an `HttpError` inside `change` aborts without writing. Reads (`authenticate`, `/public`) read the file directly, outside the queue.
+- **Audit lines are recorded with `log(event, details)` inside `change`**; `mutate` writes them after the database, still inside the queue, with the new `rev`. Add `...requestInfo(req)` (ip, ua, device prefix) to every line. Login and failed login are logged with `audit()` directly (they change no data).
+- **scrypt never runs inside the queue:** routes hash a new PIN first and pass it as `setPin(user, pin, { hash })`. Only `migrateDatabase` and the import still hash inside.
+- Member write routes go through `limitWrites` (per-member budget: 50, then 10 per second, else 429).
 - **Bids are deltas today.** `POST /me/contribution {delta}` adds to the stored bid on the server. The frontend (`MemberPage.flush`) collects clicks in `queueRef` while a request is in flight and sends their sum next, which makes fast or parallel clicks safe (tested with 200 parallel clicks). Hours are absolute (`PUT /me/hours`) and rounded to half hours on the server. The new bidding flow replaces the delta with an absolute value; see "New bidding flow".
-- **Every state response carries `rev`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp) drops any response whose `rev` is older than what it shows. New endpoints that return state must include `summary(data)`.
-- `audit()` runs after `mutate()` resolves.
+- **Every state response carries `rev` and `boot`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp, via `isNewer` in `lib.js`) drops any response whose `rev` is older than what it shows, unless `boot` changed (server restart, e.g. after restoring a backup with a lower `rev`). New endpoints that return state must include `summary(data)`.
 
 ### Sessions and login
 
 - Tokens are stateless HMAC-signed payloads `{ uid, pv, role, exp }`. `authenticate(role)` checks the signature, the role and that `pv` equals the user's current `pinVersion`, so every PIN change (`setPin`) ends all older sessions.
 - PIN-change endpoints return a fresh `session`, and the frontend must store it. `AdminApp.logout` ignores a 401 from a request that used an older token.
 - Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`.
-- Login throttling is in memory (lost on restart): failures are counted per `userId|ip` (5 failures, then a lock starting at 1 minute and doubling up to 1 h) plus per IP (50 failures in 15 min block all logins from that IP). With loopback or no forwarded address, the lock applies per account only. This is known to break in the intended setting; see "Open work".
+- **Login throttling** (in memory, lost on restart; README "Security model" has the numbers). Never key anything by IP alone: the whole meeting shares one address.
+  - Every browser sends a device id (`deviceId()` in `lib.js`, 22 base64url characters, in the login body and as `X-Device` header).
+  - Own-device lock: `deviceFailures`, keyed `userId|d:<device>`; pages without a device id fall back to `userId|n:<IPv4 or IPv6 /64>` (`networkOf`).
+  - Account budget: `accountBudgets`, a token bucket per account for devices that are not trusted, taken before scrypt and given back on a right PIN.
+  - Trusted device: after a right PIN the login returns `trust`, signed with `trustKey` (derived from the session secret) over `{uid, did, pv, exp}`. The frontend keeps it per account (`rememberTrust`/`trustFor`) and sends it with the next login; it skips the account budget, not the own-device lock.
+  - Everything that rejects an attempt runs before scrypt; `checkPinLimited` runs at most 2 scrypt at a time (queue 200 per class, else 503).
+  - An admin PIN reset (`clearFailedLogins`) lifts all locks and refills the budget.
+- Members the admin adds get a random start PIN (`randomStartPin`, never 1234/0000), returned once as `added.startPin` and shown in `AdminApp` until closed. Imported members still get `DEFAULT_PIN`.
 
 ### Response shapes and privacy
 
@@ -86,7 +98,7 @@ Next to it: `audit.log` (one JSON line per change), `backups/` (daily copy plus 
 
 ### Frontend structure
 
-- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`; 401 means log out), session storage, de-DE formatting, `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
+- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting, `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
 - `ui.js`: shared components (`Band` header, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice`).
 - `MemberApp.js`:
   - `FrontPage`: name list, search, PIN step.
@@ -104,6 +116,7 @@ If you change one of these, update both sides:
 |---|---|---|
 | PIN 4–6 digits | `PIN_PATTERN` | `isPin`, `csv.js` |
 | Max. hours 744 | `MAX_HOURS` | `HoursCard` |
+| Device id: 22 base64url characters | `DEVICE_PATTERN` | `DEVICE_PATTERN`, `randomDeviceId` in `lib.js` |
 | Name max. 60 characters | `MAX_NAME_LENGTH` | `maxLength` in `AdminApp` |
 | Start PIN 1234, admin PIN 0000 | `DEFAULT_PIN`, `ADMIN_DEFAULT_PIN` | texts in `AdminApp` |
 | Max. delta per request 10,000 € (goes away with the new bidding flow) | `MAX_STEP` | `flush` sends the sum of all clicks queued during one request, which must stay below it |
@@ -122,23 +135,19 @@ If you change one of these, update both sides:
 
 Remove items here once they are done.
 
-1. **Login locks must not hit people who share a WLAN** (highest priority). Today 50 wrong PINs from one IP within 15 minutes block every login from that network, the admin's too. A per-account lock keyed by IP also locks the real owner if they are in the same WLAN. The fix must also cover item 3, and the README section "Security model" ("Other devices are not affected") must be updated with it.
-2. **New bidding flow**, see the next section.
-3. Brute force across many addresses: there is no per-account limit over all IPs (one IPv6 /64 gives an attacker unlimited addresses). Add one, group IPv6 by /64, and require a longer admin PIN.
-4. Audit log: record IP and user agent, and write the line inside the write queue so it is never lost or out of order.
-5. `npm audit fix` in `backend/` (Express dependencies).
-6. Security headers (clickjacking protection, `nosniff`, Referrer-Policy): check with `curl -I https://franz.uber.space` what Uberspace already sets, then add the rest in `.htaccess`.
-7. `fetch` has no timeout, so a hanging request blocks the page. Abort after about 15 s and reload the real state from the server. With the absolute bid from item 2 a retry is safe.
-8. JSON import preview: the total only reads `contributions[id]`, while the server also accepts `contribution` per user. Also show the hours sum in the CSV and JSON preview.
-9. Small fixes:
-   - The `.htaccess` cache rule misses `*.chunk.js` and `static/media` (fonts).
-   - Backup file names use the UTC date.
+1. **New bidding flow**, see the next section.
+2. JSON import preview: the total only reads `contributions[id]`, while the server also accepts `contribution` per user. Also show the hours sum in the CSV and JSON preview.
+3. Small fixes:
+   - Backup file names use the UTC date and hour.
    - `set-pin.js` always sets `defaultPin: false`.
+
+Done in October 2026 (security hardening for the meeting): login locks per device instead of per IP, per-account limit with trusted devices, scrypt limiter, audit log with address/browser/device inside the write queue, `npm audit` clean (express 4.22.3), security headers and CSP, request timeout, random start PIN for admin-added members, body limits, write budget, hourly backups, input normalization.
 
 Deferred or not wanted:
 
-- Individual random start PINs. The shared start PIN 1234 lets members bid in each other's name; this is accepted for now.
+- Random start PINs for imported members: the shared start PIN 1234 still lets members log in to accounts that never changed it; accepted for now.
 - CSV export for German Excel (semicolon and decimal comma): not wanted.
+- Longer admin PIN: not wanted; the admin should simply choose 6 digits.
 
 ## New bidding flow (agreed spec)
 
