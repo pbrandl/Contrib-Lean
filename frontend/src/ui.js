@@ -1,9 +1,18 @@
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
+import { DEMO } from './demo';
 import { countBids, formatHours, formatWhole, inMode, isPin, toGross } from './lib';
 
 export function Logo({ className }) {
+  // The demo carries no organisation's logo.
+  if (DEMO) {
+    return (
+      <span className={`demo-wordmark ${className || ''}`} role="img" aria-label="Bietrunde Demo">
+        Bietrunde<span>Demo</span>
+      </span>
+    );
+  }
   return <img src={logo} alt="FRANZ!werk Tübingen" width="700" height="600" className={className} />;
 }
 

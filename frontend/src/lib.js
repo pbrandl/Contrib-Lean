@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEMO, demoApi } from './demo';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -17,6 +18,13 @@ export class ApiError extends Error {
 
 // `timeout`: longer for requests that may take a while on the server (import).
 export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT_MS } = {}) {
+  if (DEMO) {
+    try {
+      return await demoApi(path, { method, body, token });
+    } catch (err) {
+      throw new ApiError(err.status || 500, err.message);
+    }
+  }
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;

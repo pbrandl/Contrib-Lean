@@ -530,6 +530,45 @@
     box-shadow: 0 10px 28px -10px rgb(20 35 47 / 0.5);
   }
 
+  /* Demo only: the wordmark in place of the logo, and the strip above the page. */
+  .demo-wordmark {
+    @apply inline-flex flex-col justify-center font-display font-extrabold text-gelb;
+    font-size: 1.45rem;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    width: auto;
+  }
+
+  .demo-wordmark span {
+    margin-top: 0.25rem;
+    font-family: theme('fontFamily.sans');
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: rgb(255 255 255 / 0.75);
+  }
+
+  .demo-bar {
+    @apply flex flex-wrap items-center justify-between bg-gelb-hell text-tinte;
+    gap: 0.25rem 1rem;
+    font-size: 0.85rem;
+    padding-block: 0.5rem;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    box-shadow: inset 0 -1px 0 rgb(245 220 81 / 0.6);
+  }
+
+  .demo-actions {
+    @apply flex flex-wrap;
+    gap: 0.25rem 1rem;
+  }
+
+  .demo-actions button {
+    @apply font-semibold text-blau underline underline-offset-2;
+    min-height: 2.25rem;
+  }
+
   /* Admin: the member list folds away behind this header. */
   .collapse-head {
     @apply flex w-full items-center gap-3 rounded-2xl bg-white text-left text-tinte shadow-card;
