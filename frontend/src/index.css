@@ -705,6 +705,23 @@
     }
   }
 
+  .spinner {
+    display: inline-block;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 999px;
+    border: 2.5px solid currentColor;
+    border-right-color: transparent;
+    animation: spin 700ms linear infinite, fade-in 200ms ease-out;
+  }
+
+  /* Page start: the blue top the page opens with, nothing else until it takes a while. */
+  .loading-page {
+    @apply grid place-items-center bg-werkblau;
+    min-height: 16rem;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
   /* Banner at the top of the screen, below the safe area. */
   .notice-wrap {
     @apply pointer-events-none fixed inset-x-0 top-0 z-40 flex justify-center;
@@ -800,6 +817,18 @@
   }
   to {
     transform: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
 }
 

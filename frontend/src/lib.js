@@ -239,6 +239,21 @@ export function usePolling(callback, ms, active = true) {
   }, [ms, active]);
 }
 
+// True once `active` has stayed true for `ms`: a spinner only shows when something really
+// takes a while, so fast answers never flash one.
+export function useDelayed(active, ms = 200) {
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setLate(false);
+      return undefined;
+    }
+    const id = setTimeout(() => setLate(true), ms);
+    return () => clearTimeout(id);
+  }, [active, ms]);
+  return active && late;
+}
+
 // A short message at the top of the page; confirmations disappear on their own.
 export function useNotice() {
   const [notice, setNotice] = useState(null);

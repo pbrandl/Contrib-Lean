@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Lock } from 'lucide-react';
 import { usesKeypad } from './AmountSheet';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
-import { countBids, formatHours, formatWhole, inMode, isPin, toGross } from './lib';
+import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed } from './lib';
 
 export function Logo({ className }) {
   // The demo carries no organisation's logo.
@@ -151,6 +151,7 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
   const [reveal, setReveal] = useState(-1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const slow = useDelayed(busy);
   const [keypad] = useState(usesKeypad);
   const inputRef = useRef(null);
   const timer = useRef(null);
@@ -241,7 +242,6 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
                 type="button"
                 className="key"
                 onClick={() => press(key)}
-                disabled={busy}
                 aria-label={key === 'back' ? 'Letzte Ziffer löschen' : undefined}
               >
                 {key === 'back' ? <ArrowLeft className="h-7 w-7" aria-hidden="true" /> : key}
@@ -250,8 +250,9 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
           </div>
         )}
 
-        <button type="submit" className="pin-submit" disabled={busy || pin.length < 4}>
-          {busy ? 'Wird geprüft …' : submitLabel}
+        {/* While the PIN is checked the button stays as it is; only a slow check shows a spinner. */}
+        <button type="submit" className="pin-submit" disabled={!busy && pin.length < 4} aria-busy={busy}>
+          {slow ? <><Spinner /><span className="sr-only">Wird geprüft</span></> : submitLabel}
         </button>
         {children && <div className="pin-foot">{children}</div>}
       </div>
@@ -305,16 +306,18 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
   );
 }
 
+// A turning ring in the current text colour.
+export function Spinner({ className = '' }) {
+  return <span className={`spinner ${className}`} aria-hidden="true" />;
+}
+
+// While the page starts: only the blue top, and a spinner if it takes longer than 0.2 s.
 export function LoadingPage() {
+  const slow = useDelayed(true);
   return (
-    <>
-      <Band className="py-3">
-        <Logo className="h-14 w-auto" />
-      </Band>
-      <main className="wrap py-8">
-        <p className="text-tinte/70" role="status">Lädt …</p>
-      </main>
-    </>
+    <div className="loading-page on-dark" role="status" aria-label="Lädt">
+      {slow && <Spinner className="h-8 w-8 text-white" />}
+    </div>
   );
 }
 
