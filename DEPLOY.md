@@ -42,10 +42,10 @@ cd ~
 ```
 
 ```bash
-ls -d ~/fundraiser-app-v1
+ls -d ~/fundraiser-app-v1 ~/fundraiser-app-vor-v1
 ```
 
-Hier muss `No such file or directory` kommen. Gibt es den Ordner schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v1` und den Befehl davor noch einmal.
+Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v1` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v1` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v1`, bitte nicht weitermachen und melden.
 
 ```bash
 unzip -q ~/fundraiser-app-v1.zip -d ~
@@ -81,7 +81,7 @@ cd ~/fundraiser-app-v1/backend
 node test.js /nonexistent
 ```
 
-Am Ende muss `0 failed` stehen. Die Tests laufen mit einer eigenen, leeren Test-Datenbank und berühren die echten Daten nicht.
+Das dauert etwa eine Minute und gibt viele Zeilen aus, darunter Hunderte `[login] wrong PIN …`: Die Tests probieren absichtlich falsche PINs. Am Ende muss `0 failed` stehen. Die Tests laufen mit einer eigenen, leeren Test-Datenbank und berühren die echten Daten nicht.
 
 ```bash
 cd ~/fundraiser-app-v1/frontend
@@ -95,7 +95,7 @@ Hier muss `Compiled successfully.` stehen.
 
 ## 5. Umschalten
 
-Ab hier ist die App für ein paar Sekunden nicht erreichbar.
+Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Wer genau dann speichert, bekommt eine Fehlermeldung und speichert danach einfach noch einmal.
 
 ```bash
 cd ~
@@ -126,6 +126,8 @@ mv ~/fundraiser-app-v1 ~/fundraiser-app
 ```bash
 supervisorctl start fundraiser
 ```
+
+Das dauert etwa 30 Sekunden, bis `fundraiser: started` kommt: Uberspace wartet so lange, ob der Dienst stabil läuft. Die App antwortet schon vorher.
 
 ```bash
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
@@ -180,6 +182,8 @@ cp -a ~/fundraiser-app-v1-fehler/backend/data/. ~/fundraiser-app/backend/data/
 ```bash
 supervisorctl start fundraiser
 ```
+
+(Wieder etwa 30 Sekunden.)
 
 ```bash
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/

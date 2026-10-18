@@ -52,6 +52,7 @@ Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own fol
 - One command per line, never `&&` chains. Once a pasted line merged `~/html/` with the next `cd`, `rsync --delete build/ ~/html/cd ~/fundraiser-app/backend` took the backend folder as its target and emptied it, data included; it was restored from the copy made before the update.
 - `rsync --delete` only with full source and target paths (`rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/`).
 - Before any update, a full copy of `~/fundraiser-app` (code and data) must exist; the swap in `DEPLOY.md` keeps the old folder for that.
+- The service is `~/etc/services.d/fundraiser.ini` (`directory=%(ENV_HOME)s/fundraiser-app/backend`, `command=node server.js`, `PORT="3001"`, `NODE_ENV="production"`, and `startsecs=30` set by Uberspace). So `supervisorctl start` only returns after about 30 seconds, while the app already answers after one; say so, or it looks hung. The path stays the same across the folder swap, so the ini never changes.
 
 ## Architecture
 
