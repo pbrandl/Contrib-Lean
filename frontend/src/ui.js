@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, CheckCircle2, Lock } from 'lucide-react';
-import { usesKeypad } from './AmountSheet';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
-import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed } from './lib';
+import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed, usesKeypad } from './lib';
 
 export function Logo({ className }) {
   // The demo carries no organisation's logo.
@@ -151,7 +150,6 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
   const [reveal, setReveal] = useState(-1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const slow = useDelayed(busy);
   const [keypad] = useState(usesKeypad);
   const inputRef = useRef(null);
   const timer = useRef(null);
@@ -252,10 +250,9 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
           </div>
         )}
 
-        {/* While the PIN is checked the button stays as it is; only a slow check shows a spinner. */}
-        <button type="submit" className="pin-submit" disabled={!busy && pin.length < 4} aria-busy={busy}>
-          {slow ? <><Spinner /><span className="sr-only">Wird geprüft</span></> : submitLabel}
-        </button>
+        <BusyButton type="submit" className="pin-submit" busy={busy} busyLabel="Wird geprüft" disabled={pin.length < 4}>
+          {submitLabel}
+        </BusyButton>
         {children && <div className="pin-foot">{children}</div>}
       </div>
     </form>
@@ -297,14 +294,35 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
       )}
       {error && <p className="font-semibold text-ziegel" role="alert">{error}</p>}
       <div className="flex gap-2">
-        <button type="submit" className="btn-blau flex-1" disabled={busy}>
-          {busy ? 'Wird gespeichert …' : 'PIN speichern'}
-        </button>
+        <BusyButton type="submit" className="btn-blau flex-1" busy={busy} busyLabel="Wird gespeichert">
+          PIN speichern
+        </BusyButton>
         <button type="button" className="btn-rand flex-1" onClick={onCancel} disabled={busy}>
           Abbrechen
         </button>
       </div>
     </form>
+  );
+}
+
+// A button for an action that waits for the server. While `busy` it looks the same and
+// ignores clicks; only when the wait takes longer than 0.2 s a spinner takes the place of
+// its content (which keeps the button's width). `disabled` is for "not possible yet".
+export function BusyButton({ busy = false, busyLabel, disabled = false, className = '', onClick, children, ...rest }) {
+  const slow = useDelayed(busy);
+  const click = (e) => {
+    if (busy) {
+      e.preventDefault();
+      return;
+    }
+    if (onClick) onClick(e);
+  };
+  return (
+    <button {...rest} className={`busy-button ${className}`} disabled={!busy && disabled} aria-busy={busy || undefined} onClick={click}>
+      <span className={`busy-content${slow ? ' invisible' : ''}`}>{children}</span>
+      {slow && <span className="busy-spinner" aria-hidden="true"><Spinner /></span>}
+      {busy && <span className="sr-only">{busyLabel}</span>}
+    </button>
   );
 }
 

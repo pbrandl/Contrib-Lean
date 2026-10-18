@@ -103,7 +103,8 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 ### Frontend structure
 
 - `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`, `useAmountMode` stores the display mode per device), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
-- `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top).
+- `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
+- **Every button that waits for the server is a `BusyButton`** (`busy`, `busyLabel` for screen readers, `disabled` only for "not possible yet"). While busy it looks the same and ignores clicks; after 0.2 s (`useDelayed`) a spinner replaces its content and the button keeps its width. No "Wird … …" texts on buttons.
 - `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview; `usesKeypad()` picks the keypad (`pointer: coarse`) or the text field.
 - `MemberApp.js`:
   - `FrontPage`: name list, search, PIN step.
@@ -229,7 +230,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 - One box per digit, left-aligned. It starts with one empty box, because the length of the PIN is not known; every digit shows briefly (0.7 s), then turns into a round dot, and the next empty box appears, up to 8. The box for the next digit has a white edge that is highlighted outward once, in one smooth movement, whenever it appears.
 - Touch devices get the page's own keypad (digits, backspace); on computers a visually hidden field (`#pin`, label "PIN") takes the keys, Enter logs in. "Anmelden" is enabled from 4 digits.
 - PINs have 4 to 8 digits (server, app, CSV import and mail script).
-- While the PIN is checked, "Anmelden" stays as it is; only after 0.2 s it shows a spinner (`useDelayed`, `Spinner`). The page start (`LoadingPage`) works the same way: the blue top, and a spinner only after 0.2 s. No "Lädt …" or "Wird geprüft …" texts.
+- While the PIN is checked, "Anmelden" stays as it is; only after 0.2 s it shows a spinner. The page start (`LoadingPage`) works the same way: the blue top, and a spinner only after 0.2 s. No "Lädt …" or "Wird geprüft …" texts.
 - It fits on one screen like the bid sheet: on short screens the lock, the intro and the hint go away and the keypad shrinks (rows of at least 44 px).
 
 ### Banners (whole app: member page, front page and admin)

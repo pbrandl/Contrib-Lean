@@ -705,6 +705,26 @@
     }
   }
 
+  .busy-button {
+    position: relative;
+  }
+
+  /* The content keeps its place (and so the button its width) while the spinner shows. */
+  .busy-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: inherit;
+    gap: inherit;
+    width: 100%;
+  }
+
+  .busy-spinner {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
   .spinner {
     display: inline-block;
     width: 1.4rem;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
 import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, totalGross, useAmountMode, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
-import { Band, Callout, LoadingPage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { Band, BusyButton, Callout, LoadingPage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 const countMembers = (n) => (n === 1 ? '1 Mitglied' : `${n} Mitglieder`);
 
@@ -228,7 +228,7 @@ function MembersSection({ users, call, showNotice }) {
                 maxLength={60}
                 className="field min-w-0 flex-1"
               />
-              <button type="submit" className="btn-blau" disabled={adding}>Eintragen</button>
+              <BusyButton type="submit" className="btn-blau" busy={adding} busyLabel="Wird eingetragen">Eintragen</BusyButton>
             </div>
             {addError ? (
               <p className="mt-1 font-semibold text-ziegel" role="alert">{addError}</p>
@@ -329,9 +329,9 @@ function MembersSection({ users, call, showNotice }) {
                         {user.name} löschen? Das Gebot wird ebenfalls gelöscht. Das lässt sich hier nicht rückgängig machen.
                       </p>
                       <div className="flex gap-2">
-                        <button type="button" className="btn-ziegel flex-1" onClick={() => remove(user)} disabled={deleting}>
-                          {deleting ? 'Wird gelöscht …' : 'Löschen'}
-                        </button>
+                        <BusyButton type="button" className="btn-ziegel flex-1" onClick={() => remove(user)} busy={deleting} busyLabel="Wird gelöscht">
+                          Löschen
+                        </BusyButton>
                         <button type="button" className="btn-rand flex-1" onClick={() => setOpen(null)} disabled={deleting}>
                           Abbrechen
                         </button>
@@ -388,7 +388,7 @@ function TargetSection({ target, call, showNotice }) {
             autoComplete="off"
             className="field min-w-0 flex-1"
           />
-          <button type="submit" className="btn-blau" disabled={busy}>Speichern</button>
+          <BusyButton type="submit" className="btn-blau" busy={busy} busyLabel="Wird gespeichert">Speichern</BusyButton>
         </div>
         {error && <p className="mt-1 font-semibold text-ziegel" role="alert">{error}</p>}
       </form>
@@ -519,9 +519,9 @@ function DataSection({ memberCount, call, showNotice }) {
             behält die bisherige PIN, wenn die Datei keine PIN enthält. Neue Mitglieder ohne PIN in der Datei bekommen die Start-PIN 1234.
           </p>
           <div className="flex gap-2">
-            <button type="button" className="btn-ziegel flex-1" onClick={runImport} disabled={busy}>
-              {busy ? 'Wird importiert …' : 'Importieren'}
-            </button>
+            <BusyButton type="button" className="btn-ziegel flex-1" onClick={runImport} busy={busy} busyLabel="Wird importiert">
+              Importieren
+            </BusyButton>
             <button type="button" className="btn-rand flex-1" onClick={() => setPending(null)} disabled={busy}>
               Abbrechen
             </button>

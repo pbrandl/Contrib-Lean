@@ -32,3 +32,23 @@ test('PIN boxes: one empty box to start, a digit shows briefly and becomes a dot
   expect(boxes()).toHaveLength(1);
   jest.useRealTimers();
 });
+
+test('busy button: looks the same at first, ignores clicks, shows a spinner only after 0.2 s', () => {
+  jest.useFakeTimers();
+  const { BusyButton } = require('./ui');
+  const click = jest.fn();
+  const { container, rerender } = render(<BusyButton busy={false} busyLabel="Wird gespeichert" onClick={click}>Speichern</BusyButton>);
+  fireEvent.click(screen.getByRole('button'));
+  expect(click).toHaveBeenCalledTimes(1);
+  rerender(<BusyButton busy busyLabel="Wird gespeichert" onClick={click}>Speichern</BusyButton>);
+  expect(screen.getByRole('button')).toBeEnabled();
+  expect(container.querySelector('.spinner')).toBeNull();
+  fireEvent.click(screen.getByRole('button'));
+  expect(click).toHaveBeenCalledTimes(1);
+  act(() => { jest.advanceTimersByTime(250); });
+  expect(container.querySelector('.spinner')).not.toBeNull();
+  expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
+  rerender(<BusyButton busy={false} busyLabel="Wird gespeichert" onClick={click}>Speichern</BusyButton>);
+  expect(container.querySelector('.spinner')).toBeNull();
+  jest.useRealTimers();
+});

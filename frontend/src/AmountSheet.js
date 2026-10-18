@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, X } from 'lucide-react';
 import { formatHours, formatWhole, inMode, ownGross, round2, toNet, totalGross } from './lib';
+import { BusyButton } from './ui';
 import { KINDS, MAX_HOURS, formatRaw, fromText, pressKey, rawValue, sanitize, toRaw } from './entry';
 
-// Phones and tablets get the page's own keypad, computers a text field on the same sheet.
-export const usesKeypad = () => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+export { usesKeypad } from './lib';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', 'back'];
 const KEY_LABELS = { ',': 'Komma', back: 'Letzte Ziffer löschen' };
@@ -252,10 +252,10 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
         )}
 
         <div className="sheet-foot flex items-center">
-          <button type="button" className="save" onClick={save} disabled={unchanged || busy || waiting}>
-            {busy ? 'Wird gespeichert …' : 'Speichern'}
-            {!busy && <ChevronRight className="h-6 w-6" aria-hidden="true" />}
-          </button>
+          <BusyButton type="button" className="save" onClick={save} busy={busy} busyLabel="Wird gespeichert" disabled={unchanged || waiting}>
+            Speichern
+            <ChevronRight className="h-6 w-6" aria-hidden="true" />
+          </BusyButton>
         </div>
       </div>
     </div>

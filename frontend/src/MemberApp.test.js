@@ -180,7 +180,7 @@ test('a bid without an answer is sent again', async () => {
   type(screen.getByLabelText('Dein Beitrag in Euro'), ['0']);
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
   await act(async () => {});
-  expect(screen.getByRole('button', { name: 'Wird gespeichert …' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Wird gespeichert/ })).toHaveAttribute('aria-busy', 'true');
   await act(async () => { jest.advanceTimersByTime(1000); });
   expect(await screen.findByText('Dein Beitrag ist jetzt 15.850 €.')).toBeInTheDocument();
   expect(puts()).toEqual([['/api/me/contribution', { amount: 15850 }], ['/api/me/contribution', { amount: 15850 }]]);
@@ -218,7 +218,7 @@ test('a save that ends after its sheet was closed does not close or block the ne
   fireEvent.click(await screen.findByRole('button', { name: 'Beitrag ändern' }));
   type(screen.getByLabelText('Dein Beitrag in Euro'), ['Backspace', 'Backspace', 'Backspace']);
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
-  expect(await screen.findByRole('button', { name: 'Wird gespeichert …' })).toBeDisabled();
+  expect(await screen.findByRole('button', { name: /Wird gespeichert/ })).toHaveAttribute('aria-busy', 'true');
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
@@ -242,7 +242,7 @@ test('a save that ends after logging out changes nothing on the next page', asyn
   fireEvent.click(await screen.findByRole('button', { name: 'Beitrag ändern' }));
   type(screen.getByLabelText('Dein Beitrag in Euro'), ['0']);
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
-  await screen.findByRole('button', { name: 'Wird gespeichert …' });
+  await screen.findByRole('button', { name: /Wird gespeichert/ });
   fireEvent.keyDown(document, { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
   expect(await screen.findByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();

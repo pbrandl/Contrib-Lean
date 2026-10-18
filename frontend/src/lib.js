@@ -239,6 +239,9 @@ export function usePolling(callback, ms, active = true) {
   }, [ms, active]);
 }
 
+// Phones and tablets get the page's own keypad, computers type on their keyboard.
+export const usesKeypad = () => typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+
 // True once `active` has stayed true for `ms`: a spinner only shows when something really
 // takes a while, so fast answers never flash one.
 export function useDelayed(active, ms = 200) {
