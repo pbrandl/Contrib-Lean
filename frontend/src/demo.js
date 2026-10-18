@@ -155,7 +155,7 @@ function amount(value, label, max = 1000000) {
 }
 
 function pinOf(value) {
-  if (typeof value !== 'string' || !/^\d{4,6}$/.test(value)) throw new DemoError(400, 'Die PIN muss aus 4 bis 6 Ziffern bestehen.');
+  if (typeof value !== 'string' || !/^\d{4,8}$/.test(value)) throw new DemoError(400, 'Die PIN muss aus 4 bis 8 Ziffern bestehen.');
   return value;
 }
 

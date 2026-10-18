@@ -14,7 +14,7 @@ const SECRET_FILE = path.join(DATA_DIR, 'session-secret');
 
 const DEFAULT_PIN = '1234';
 const ADMIN_DEFAULT_PIN = '0000';
-const PIN_PATTERN = /^\d{4,6}$/;
+const PIN_PATTERN = /^\d{4,8}$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const MAX_AMOUNT = 1000000;
 const MAX_HOURS = 744; // hours in a 31-day month
@@ -122,7 +122,7 @@ const own = (object, key) => (Object.prototype.hasOwnProperty.call(object, key) 
 
 function requirePin(pin, where = '') {
   if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
-    throw new HttpError(400, `${where ? `${where}: ` : ''}Die PIN muss aus 4 bis 6 Ziffern bestehen.`);
+    throw new HttpError(400, `${where ? `${where}: ` : ''}Die PIN muss aus 4 bis 8 Ziffern bestehen.`);
   }
   return pin;
 }

@@ -111,14 +111,23 @@ function FrontPage({ onLogin }) {
   const needle = fold(query.trim());
   const matches = needle ? members.filter(m => fold(m.name).includes(needle)) : members;
 
+  // PIN step: a screen of its own, dark blue, with the keypad on phones.
+  if (selected) {
+    return (
+      <PinLogin
+        title={selected.name}
+        intro="Gib deine PIN ein, um dein Gebot abzugeben."
+        onSubmit={login}
+        back={<button type="button" onClick={back} className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> Anderer Name</button>}
+      >
+        PIN vergessen? Ein Admin kann dir eine neue setzen.
+      </PinLogin>
+    );
+  }
+
   return (
     <>
-      {selected ? (
-        // Small header in the PIN step, so the PIN field stays above the phone keyboard.
-        <Band className="py-3">
-          <Logo className="h-14 w-auto" />
-        </Band>
-      ) : (
+      {!selected && (
         <Band className="pb-[3.9rem] pt-6">
           <Logo className="h-28 w-auto sm:h-32" />
           <div className="mt-5">
@@ -130,19 +139,8 @@ function FrontPage({ onLogin }) {
       {/* relative: the card overlaps the header and must be drawn above it. While searching,
           the page keeps at least one screen height, so a shorter result list cannot pull
           the page back to the top. */}
-      <main className={`wrap relative pb-16 ${selected ? 'pt-6' : '-mt-8'} ${searching || query ? 'min-h-[calc(100svh+8rem)]' : ''}`}>
-        {selected ? (
-          <div className="space-y-3">
-            <button type="button" onClick={back} className="btn-leise -ml-2 px-3">
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" /> Anderer Name
-            </button>
-            <div className="card p-4 sm:p-6">
-              <PinLogin title={selected.name} intro="Gib deine PIN ein, um dein Gebot abzugeben." onSubmit={login}>
-                <p className="text-sm text-tinte/60">PIN vergessen? Ein Admin kann dir eine neue setzen.</p>
-              </PinLogin>
-            </div>
-          </div>
-        ) : (
+      <main className={`wrap relative -mt-8 pb-16 ${searching || query ? 'min-h-[calc(100svh+8rem)]' : ''}`}>
+        {(
           <div className="card p-4 sm:p-6">
             <h1 className="font-display text-2xl font-bold tracking-tight">Wähle deinen Namen</h1>
 

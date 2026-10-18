@@ -7,7 +7,7 @@ const path = require('path');
 const [userId, pin] = process.argv.slice(2);
 const file = path.join(process.env.DATA_DIR || path.join(__dirname, 'data'), 'database.json');
 
-if (!userId || !/^\d{4,6}$/.test(pin || '')) {
+if (!userId || !/^\d{4,8}$/.test(pin || '')) {
   console.error('Usage: node set-pin.js <userId|admin> <PIN with 4 to 6 digits>');
   process.exit(1);
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
 import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, totalGross, useAmountMode, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
-import { Band, Callout, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { Band, Callout, LoadingPage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 const countMembers = (n) => (n === 1 ? '1 Mitglied' : `${n} Mitglieder`);
 
@@ -47,18 +47,12 @@ function AdminLogin({ onLogin }) {
   };
 
   return (
-    <>
-      <Band className="pb-6 pt-5">
-        <Logo className="h-28 w-auto" />
-      </Band>
-      <main className="wrap pb-16 pt-6">
-        <PinLogin title="Admin" intro="Melde dich mit der Admin-PIN an." onSubmit={login}>
-          <a href="/" className="btn-leise -ml-2 px-2">
-            <ChevronLeft className="h-5 w-5" aria-hidden="true" /> Zur Startseite
-          </a>
-        </PinLogin>
-      </main>
-    </>
+    <PinLogin
+      title="Admin"
+      intro="Melde dich mit der Admin-PIN an."
+      onSubmit={login}
+      back={<a href="/" className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> Zur Startseite</a>}
+    />
   );
 }
 

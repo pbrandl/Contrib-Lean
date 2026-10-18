@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Lock } from 'lucide-react';
+import { usesKeypad } from './AmountSheet';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
 import { countBids, formatHours, formatWhole, inMode, isPin, toGross } from './lib';
@@ -126,7 +127,7 @@ export function PinInput({ id, value, onChange, label, autoFocus = false, large 
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete="off"
-        maxLength={6}
+        maxLength={8}
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
         autoFocus={autoFocus}
@@ -136,16 +137,50 @@ export function PinInput({ id, value, onChange, label, autoFocus = false, large 
   );
 }
 
-// Login with a PIN. `onSubmit` returns a promise; its error message is shown below the field.
-export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, children }) {
+// Login with a PIN on a dark blue screen. Every digit gets its own box: it shows briefly,
+// then turns into a dot, and the next empty box appears (the length is not known, so the
+// boxes start left and grow to the right, up to PIN_MAX). Touch devices get the page's own
+// keypad; on computers a hidden field takes the keys. `onSubmit` returns a promise; its
+// error message is shown below the boxes. `back`: a link or button above the title.
+export const PIN_MAX = 8;
+const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
+const REVEAL_MS = 700;
+
+export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, back, children }) {
   const [pin, setPin] = useState('');
+  const [reveal, setReveal] = useState(-1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [keypad] = useState(usesKeypad);
+  const inputRef = useRef(null);
+  const timer = useRef(null);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!keypad && inputRef.current) inputRef.current.focus();
+  }, [keypad]);
+
+  const change = (text) => {
+    if (busy) return;
+    const next = text.replace(/\D/g, '').slice(0, PIN_MAX);
+    clearTimeout(timer.current);
+    if (next.length > pin.length) {
+      setReveal(next.length - 1);
+      timer.current = setTimeout(() => setReveal(-1), REVEAL_MS);
+    } else {
+      setReveal(-1);
+    }
+    setPin(next);
+    setError('');
+  };
+
+  const press = (key) => change(key === 'back' ? pin.slice(0, -1) : pin + key);
 
   const submit = async (e) => {
-    e.preventDefault();
-    if (!pin) {
-      setError('Gib deine PIN ein.');
+    if (e) e.preventDefault();
+    if (busy) return;
+    if (pin.length < 4) {
+      setError(pin ? 'Die PIN hat mindestens 4 Ziffern.' : 'Gib deine PIN ein.');
       return;
     }
     setBusy(true);
@@ -155,22 +190,71 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, chi
     } catch (err) {
       setError(err.message);
       setPin('');
+      setReveal(-1);
       setBusy(false);
+      if (!keypad && inputRef.current) inputRef.current.focus();
     }
   };
 
+  const boxes = Math.min(pin.length + 1, PIN_MAX);
   return (
-    <form onSubmit={submit} noValidate className="space-y-5">
-      <div>
-        <h1 className="font-display text-3xl font-bold leading-tight tracking-tight">{title}</h1>
-        {intro && <p className="mt-2 text-tinte/75">{intro}</p>}
+    <form className="pin-screen on-dark" onSubmit={submit} noValidate>
+      <div className="pin-inner">
+        {back && <div className="pin-top">{back}</div>}
+        <div className="pin-head">
+          <span className="pin-lock" aria-hidden="true"><Lock className="h-6 w-6" /></span>
+          <h1>{title}</h1>
+          {intro && <p>{intro}</p>}
+        </div>
+
+        <label htmlFor="pin" className="sr-only">PIN</label>
+        <input
+          ref={inputRef}
+          id="pin"
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={PIN_MAX}
+          value={pin}
+          readOnly={busy}
+          onChange={(e) => change(e.target.value)}
+          className="sr-only"
+        />
+        <div className="pin-boxes" aria-hidden="true" onClick={() => { if (!keypad && inputRef.current) inputRef.current.focus(); }}>
+          {Array.from({ length: boxes }, (_, i) => {
+            const filled = i < pin.length;
+            const active = i === pin.length;
+            return (
+              <span key={active ? `active-${i}` : i} className={`pin-box${filled ? ' filled' : ''}${active ? ' active' : ''}`}>
+                {filled && (i === reveal ? pin[i] : <span className="pin-dot" />)}
+              </span>
+            );
+          })}
+        </div>
+        <p className="pin-error" role="alert">{error}</p>
+
+        {keypad && (
+          <div className="keypad pin-keypad">
+            {PIN_KEYS.map((key, i) => (key === '' ? <span key={i} /> : (
+              <button
+                key={key}
+                type="button"
+                className="key"
+                onClick={() => press(key)}
+                disabled={busy}
+                aria-label={key === 'back' ? 'Letzte Ziffer löschen' : undefined}
+              >
+                {key === 'back' ? <ArrowLeft className="h-7 w-7" aria-hidden="true" /> : key}
+              </button>
+            )))}
+          </div>
+        )}
+
+        <button type="submit" className="pin-submit" disabled={busy || pin.length < 4}>
+          {busy ? 'Wird geprüft …' : submitLabel}
+        </button>
+        {children && <div className="pin-foot">{children}</div>}
       </div>
-      <PinInput id="pin" label="PIN" value={pin} onChange={(v) => { setPin(v); setError(''); }} autoFocus large />
-      {error && <p className="font-semibold text-ziegel" role="alert">{error}</p>}
-      <button type="submit" className="btn-blau w-full text-lg" disabled={busy}>
-        {busy ? 'Wird geprüft …' : submitLabel}
-      </button>
-      {children}
     </form>
   );
 }
@@ -185,7 +269,7 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!isPin(pin)) {
-      setError('Die PIN muss aus 4 bis 6 Ziffern bestehen.');
+      setError('Die PIN muss aus 4 bis 8 Ziffern bestehen.');
       return;
     }
     if (confirm && pin !== again) {
@@ -204,7 +288,7 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
 
   return (
     <form onSubmit={submit} noValidate className="space-y-3">
-      <PinInput id={`${idPrefix}-pin`} label="Neue PIN (4 bis 6 Ziffern)" value={pin} onChange={(v) => { setPin(v); setError(''); }} autoFocus />
+      <PinInput id={`${idPrefix}-pin`} label="Neue PIN (4 bis 8 Ziffern)" value={pin} onChange={(v) => { setPin(v); setError(''); }} autoFocus />
       {confirm && (
         <PinInput id={`${idPrefix}-again`} label="Neue PIN wiederholen" value={again} onChange={(v) => { setAgain(v); setError(''); }} />
       )}

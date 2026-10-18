@@ -92,8 +92,8 @@ export function membersFromCsv(text) {
     const name = unguard(cell(columns.name));
     if (!name) throw new Error(`Zeile ${line}: Der Name fehlt.`);
     const pin = cell(columns.pin);
-    if (pin && !/^\d{4,6}$/.test(pin)) {
-      throw new Error(`Zeile ${line}: Die PIN „${pin}“ muss aus 4 bis 6 Ziffern bestehen.`);
+    if (pin && !/^\d{4,8}$/.test(pin)) {
+      throw new Error(`Zeile ${line}: Die PIN „${pin}“ muss aus 4 bis 8 Ziffern bestehen.`);
     }
     const raw = cell(columns.contribution);
     const contribution = raw === '' ? 0 : parseAmount(raw);

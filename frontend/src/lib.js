@@ -216,7 +216,7 @@ export function parseAmount(input) {
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
 }
 
-export const isPin = (pin) => /^\d{4,6}$/.test(pin);
+export const isPin = (pin) => /^\d{4,8}$/.test(pin);
 
 // Calls `callback` every `ms` while the page is visible, and right away when it becomes visible again.
 export function usePolling(callback, ms, active = true) {
