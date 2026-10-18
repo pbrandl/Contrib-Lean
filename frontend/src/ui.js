@@ -186,6 +186,8 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
     }
     setBusy(true);
     setError('');
+    clearTimeout(timer.current);
+    setReveal(-1);
     try {
       await onSubmit(pin);
     } catch (err) {
