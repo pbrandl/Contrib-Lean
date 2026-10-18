@@ -90,16 +90,8 @@
     @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
   }
 
-  .btn-gelb {
-    @apply btn bg-gelb text-tinte hover:bg-[#EBCF36] active:bg-[#E0C21F];
-  }
-
   .btn-blau {
     @apply btn bg-werkblau text-white hover:bg-[#2A4C68];
-  }
-
-  .btn-leise {
-    @apply btn bg-transparent text-blau hover:bg-blau-hell;
   }
 
   .btn-rand {

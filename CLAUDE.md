@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. `README.md` has the operations guide (data folder, backups, PIN reset, restore).
+"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. Current version: 1.0.0 (`CHANGELOG.md`). `README.md` has the operations guide (data folder, backups, PIN reset, restore), `DEPLOY.md` (German, for the owner) the way to install a new version.
 
 - `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
 - `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
@@ -39,12 +39,19 @@ CI=true npm run build               # ESLint runs inside the build; CI=true turn
 
 There is no separate lint script. `npm start` has no dev proxy and the backend sends no CORS headers, so the dev server cannot reach the API. To run the whole app locally, serve the build from the backend's own `app`: require `backend/server.js`, add `express.static('frontend/build')` and a `/admin` route that sends `index.html`, then call `start()`.
 
-Deploy on the Uberspace (from README):
+Demo (no server, example data, neutral branding; `src/demo.js` replaces the API in the browser when `REACT_APP_DEMO=1`):
 
 ```bash
-cd ~/fundraiser-app/frontend && npm run build && rsync -a --delete build/ ~/html/
-supervisorctl restart fundraiser
+npm run build:demo                  # frontend/build-demo/bietrunde-demo.html, one self-contained page
 ```
+
+The owner publishes that page as a Claude artifact. It must not go on the live server: next to the real app it would lead visitors to the real member list.
+
+Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own folder (`~/fundraiser-app-vX`), gets `node_modules` copied (or `npm ci` when a lockfile changed), is tested and built there, and then the service is stopped, `backend/data` copied over and the folders swapped; the old folder stays as the way back. When you write commands for the owner:
+
+- One command per line, never `&&` chains. Once a pasted line merged `~/html/` with the next `cd`, `rsync --delete build/ ~/html/cd ~/fundraiser-app/backend` took the backend folder as its target and emptied it, data included; it was restored from the copy made before the update.
+- `rsync --delete` only with full source and target paths (`rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/`).
+- Before any update, a full copy of `~/fundraiser-app` (code and data) must exist; the swap in `DEPLOY.md` keeps the old folder for that.
 
 ## Architecture
 
@@ -58,7 +65,7 @@ Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/ad
 
 - `users`: `{ id, name, pinHash, pinVersion, defaultPin }`. The admin is the user with id `admin`. Member ids are `Date.now()`-based strings.
 - `contributions` / `hours`: maps from user id to value. They only hold values > 0; `setContribution`/`setHours` delete the key at 0. `contributions` is always netto and is what every sum uses.
-- `grossBids`: the brutto amount for members who typed their bid brutto. That amount is leading: it is shown and exported as typed, and `contributions` holds the netto derived from it (`toNet`, rounded up). A netto bid, a step from an old page or a withdrawal removes the entry (`setContribution`). `grossOf()` gives the brutto of any bid.
+- `grossBids`: the brutto amount for members who typed their bid brutto. That amount is leading: it is shown and exported as typed, and `contributions` holds the netto derived from it (`toNet`, rounded up). A netto bid or a withdrawal (amount 0) removes the entry (`setContribution`). `grossOf()` gives the brutto of any bid.
 - `rev`: grows with every write.
 
 Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip`, `ua` and an 8-character device prefix; never a PIN), `backups/` (daily and hourly copies, plus one before every import; a failing backup is logged and does not stop the write) and `session-secret` (only created when missing or shorter than 32 bytes; an unreadable file stops the start). `migrateDatabase()` runs at startup and converts the old plain-text-PIN format.
@@ -70,7 +77,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - **scrypt never runs inside the queue:** routes hash a new PIN first and pass it as `setPin(user, pin, { hash })`. Only `migrateDatabase` and the import still hash inside.
 - Member write routes go through `limitWrites` (per-member budget: 50, then 10 per second, else 429).
 - **Bids and hours are absolute values:** `PUT /me/contribution {amount}` (netto, rounded to cents) or `{gross}` (brutto typed by the member, stored in `grossBids`), and `PUT /me/hours {hours}` (rounded to 0.1 h). Responses carry `contribution` (netto), `contributionGross` and `totalRaisedGross` next to `totalRaised`. Writing the same value twice changes nothing, so `MemberPage.save` retries a request without an answer (status 0) up to 3 times.
-- **Old pages:** `POST /me/contribution {delta, request}` and `POST /me/contribution/withdraw` stay only for pages loaded before the October 2026 update. Their steps are idempotent per request id (the last 20 per member in `data.requests`) and limited to `MAX_STEP`. The current frontend does not use them.
+- The step-wise routes of the first version (`POST /me/contribution {delta, request}`, `POST /me/contribution/withdraw`) and the start PIN 1234 for admin pages without a device id were removed in 1.0.0; `readDatabase` drops the old `requests` key.
 - **Every state response carries `rev` and `boot`.** Responses can overtake each other, and the frontend's `apply()` (MemberApp and AdminApp, via `isNewer` in `lib.js`) drops any response whose `rev` is older than what it shows, unless `boot` changed (server restart, e.g. after restoring a backup with a lower `rev`). New endpoints that return state must include `summary(data)`.
 
 ### Sessions and login
@@ -105,7 +112,8 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 - `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`, `useAmountMode` stores the display mode per device), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
 - `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
 - **Every button that waits for the server is a `BusyButton`** (`busy`, `busyLabel` for screen readers, `disabled` only for "not possible yet"). While busy it looks the same and ignores clicks; after 0.2 s (`useDelayed`) a spinner replaces its content and the button keeps its width. No "Wird … …" texts on buttons.
-- `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview; `usesKeypad()` picks the keypad (`pointer: coarse`) or the text field.
+- `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview. `usesKeypad()` in `lib.js` picks the keypad (`pointer: coarse`) or the keyboard, for the sheet and the PIN entry.
+- `demo.js`: the demo backend (routes and responses of `server.js` in the browser, 24 example members, state in `localStorage`); `App.js` shows a demo strip and switches to the admin view with `#admin`. `scripts/demo-inline.py` turns the demo build into one page.
 - `MemberApp.js`:
   - `FrontPage`: name list, search, PIN step.
   - `MemberPage`: bid and hours card, the sheet, PIN change.
@@ -147,7 +155,7 @@ Remove items here once they are done.
    - Backup file names use the UTC date and hour.
    - `set-pin.js` always sets `defaultPin: false`.
 
-Done in October 2026: the new bidding flow (see the next section), and the security hardening for the meeting: login locks per device instead of per IP, per-account limit with trusted devices, scrypt limiter, audit log with address/browser/device inside the write queue, `npm audit` clean (express 4.22.3), security headers and CSP, request timeout, random start PIN for admin-added members, body limits, write budget, hourly backups, input normalization.
+Done: see `CHANGELOG.md` (1.0.0: the UI spec below, the security hardening for the meeting, the measured performance).
 
 Deferred or not wanted:
 
@@ -155,9 +163,9 @@ Deferred or not wanted:
 - CSV export for German Excel (semicolon and decimal comma): not wanted.
 - Longer admin PIN than 8 digits: not wanted.
 
-## New bidding flow (agreed spec)
+## UI spec (agreed October 2026)
 
-Implemented in October 2026 (`AmountSheet.js`, `entry.js`, `MemberPage`, `AdminApp`). The section stays as the spec: change the app and this text together.
+Implemented in 1.0.0 (`AmountSheet.js`, `entry.js`, `MemberPage`, `PinLogin`, `AdminApp`). This section is the spec: change the app and this text together.
 
 Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page with example data; open it in a browser. It was reviewed on a phone, and its layout and its `pressKey`, `sanitize`, `evaluate` and `toNet` functions are the agreed behavior. The FRANZ!werk logo is left out of it on purpose; the app keeps its logo.
 
@@ -171,7 +179,7 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
 
 ### Backend
 
-- `PUT /me/contribution {amount}`: netto, 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`. The old delta routes stay for cached pages only (see "Write path").
+- `PUT /me/contribution {amount}` (netto) or `{gross}` (brutto as typed): 0 to `MAX_AMOUNT`, rounded to cents, like `PUT /me/hours`.
 - `rev` in the response and the audit line with from/to.
 - Export: CSV gets `contribution_gross` and `entered_as` columns next to `contribution` (netto), JSON `contributionsGross` and `enteredAs` maps next to `contributions`. The import reads the netto values, and for `entered_as` brutto the brutto amount, so a re-import keeps it.
 

@@ -18,7 +18,6 @@ const PIN_PATTERN = /^\d{4,8}$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
 const MAX_AMOUNT = 1000000;
 const MAX_HOURS = 744; // hours in a 31-day month
-const MAX_STEP = 10000; // only for pages from before the new bid entry
 // Bids are netto; brutto (with 19 % VAT) is shown on request and in the export.
 // Computed in whole cents, like toGross in frontend/src/lib.js, so half cents round up.
 const VAT_PERCENT = 19;
@@ -72,9 +71,6 @@ const MAX_TOKEN_LENGTH = 1000;
 const MAX_PARALLEL_PIN_CHECKS = 2;
 const MAX_WAITING_PIN_CHECKS = 200;
 const MAX_PIN_WAIT_MS = 8000; // beyond that the server answers 503 instead of letting the page wait
-// Bid steps carry a request id; a retry with the same id is counted once.
-const REQUEST_PATTERN = /^[A-Za-z0-9_-]{8,40}$/;
-const REQUESTS_TO_REMEMBER = 20;
 
 // Uberspace puts exactly one reverse proxy in front of the app.
 app.set('trust proxy', 1);
@@ -227,8 +223,9 @@ async function readDatabase() {
   const data = JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
   data.contributions = data.contributions || {};
   data.hours = data.hours || {};
-  data.requests = data.requests || {};
   data.grossBids = data.grossBids || {};
+  // Request ids of the old step-wise bids (before October 2026); nothing reads them any more.
+  delete data.requests;
   return data;
 }
 
@@ -798,41 +795,6 @@ api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => 
   res.json(memberView(data, result));
 }));
 
-// Pages from before the new bid entry (still open on phones after an update) count the
-// bid up in steps and withdraw it with an extra route. Kept so they keep working.
-// The server adds the step itself, so fast or parallel clicks are never lost.
-api.post('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
-  const delta = req.body && req.body.delta;
-  if (typeof delta !== 'number' || !Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_STEP) {
-    throw new HttpError(400, 'Ungültiger Betrag.');
-  }
-  const request = typeof req.body.request === 'string' && REQUEST_PATTERN.test(req.body.request) ? req.body.request : null;
-  const { data, result } = await mutate((data, log) => {
-    const user = findUserOrLogout(data, req.user.id);
-    // A page that got no answer sends the same step again with the same id: count it once.
-    const recent = own(data.requests, user.id) || [];
-    if (request && recent.includes(request)) return user;
-    const from = data.contributions[user.id] || 0;
-    const to = round2(Math.min(MAX_AMOUNT, Math.max(0, from + delta)));
-    setContribution(data, user.id, to);
-    if (request) data.requests[user.id] = [...recent, request].slice(-REQUESTS_TO_REMEMBER);
-    log('bid', { userId: user.id, name: user.name, from, to, request: request || undefined, ...requestInfo(req) });
-    return user;
-  });
-  res.json(memberView(data, result));
-}));
-
-api.post('/me/contribution/withdraw', memberOnly, limitWrites, handle(async (req, res) => {
-  const { data, result } = await mutate((data, log) => {
-    const user = findUserOrLogout(data, req.user.id);
-    const from = data.contributions[user.id] || 0;
-    setContribution(data, user.id, 0);
-    log('withdraw', { userId: user.id, name: user.name, from, to: 0, ...requestInfo(req) });
-    return user;
-  });
-  res.json(memberView(data, result));
-}));
-
 // Hours are set as an absolute value from a text field (not counted up like bids).
 api.put('/me/hours', memberOnly, limitWrites, handle(async (req, res) => {
   const hours = requireHours(req.body && req.body.hours);
@@ -876,10 +838,7 @@ api.get('/admin/data', adminOnly, handle(async (req, res) => {
 api.post('/admin/users', adminOnly, handle(async (req, res) => {
   const name = requireName(req.body && req.body.name);
   const chosen = req.body && req.body.pin ? requirePin(req.body.pin) : null;
-  // An admin page from before the update (no X-Device header) still tells the admin
-  // "Start-PIN: 1234", so it gets that PIN instead of a random one.
-  const random = !chosen && !!req.get('X-Device');
-  const pin = chosen || (random ? randomStartPin() : DEFAULT_PIN);
+  const pin = chosen || randomStartPin();
   const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     if (data.users.some(u => !isAdminId(u.id) && sameName(u.name, name))) {
@@ -887,7 +846,7 @@ api.post('/admin/users', adminOnly, handle(async (req, res) => {
     }
     const nextId = idGenerator(id => data.users.some(u => u.id === id));
     const user = { id: nextId(), name };
-    await setPin(user, pin, { hash, start: random ? true : undefined });
+    await setPin(user, pin, { hash, start: chosen ? undefined : true });
     data.users.push(user);
     log('user_added', { userId: user.id, name: user.name, ...requestInfo(req) });
     return user;
@@ -910,7 +869,6 @@ api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
     delete data.contributions[userId];
     delete data.grossBids[userId];
     delete data.hours[userId];
-    delete data.requests[userId];
     log('user_deleted', { userId, name: user.name, contribution, hours, ...requestInfo(req) });
   });
   clearFailedLogins(userId);
@@ -1049,7 +1007,6 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
     data.contributions = contributions;
     data.grossBids = grossBids;
     data.hours = hours;
-    data.requests = {};
     if (targetAmount) data.targetAmount = targetAmount;
     const after = summary(data);
     log('import', {

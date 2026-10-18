@@ -1,0 +1,5 @@
+# Never commit member data: CSV files contain the PINs.
+*.csv
+versendet.txt
+error_log.txt
+vorschau/

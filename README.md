@@ -1,10 +1,15 @@
 # Bietrunde – FRANZ!werk Tübingen
 
-Members open https://franz.uber.space, pick their name, log in with their PIN and set their bid
-(euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a keypad on
-phones and tablets, a text field on computers. A text button switches the display between netto and
-brutto (× 1.19); what is stored is always netto.
+Version 1.0.0. Members open https://franz.uber.space, pick their name, log in with their PIN and set
+their bid (euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a
+keypad on phones and tablets, a text field on computers. A text button switches the display between
+netto and brutto (× 1.19); sums are always netto, and a bid typed brutto is kept exactly as typed.
 Admins manage members, PINs, the target ("Bedarf") and import/export at https://franz.uber.space/admin.
+
+- `DEPLOY.md` (German): how to install a new version on the Uberspace, with the way back.
+- `CHANGELOG.md` (German): what each version changed.
+- `CLAUDE.md`: architecture, invariants and the agreed UI spec, for anyone changing the code.
+- `tools/pin-mail/` (German): sends every member their PIN by mail.
 
 ## Layout on the Uberspace
 
@@ -18,8 +23,8 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 
 | File | Purpose |
 |---|---|
-| `database.json` | members (PINs only as scrypt hashes), bids netto (`contributions`), hours per month (`hours`), target netto. Written atomically. |
-| `audit.log` | one JSON line per change (bid, withdraw, PIN change, import, …) and per login, with `rev`, IP address, browser (`ua`) and the first 8 characters of the device id – every bid can be traced to a device. Never contains PINs. |
+| `database.json` | members (PINs only as scrypt hashes), bids netto (`contributions`), bids typed brutto as typed (`grossBids`), hours per month (`hours`), target netto. Written atomically. |
+| `audit.log` | one JSON line per change (bid, hours, PIN change, import, …) and per login, with `rev`, IP address, browser (`ua`) and the first 8 characters of the device id – every bid can be traced to a device. Never contains PINs. |
 | `backups/database-YYYY-MM-DD.json` | state before the first change of each day (UTC date), 60 days kept |
 | `backups/database-YYYY-MM-DD-HHh.json` | state before the first change of each hour (UTC), 48 hours kept |
 | `backups/database-…-before-import.json` | state before every import |
@@ -34,7 +39,7 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
   The login is stored per browser: a member who opened the link from the mail inside the mail app's own browser (Gmail, Outlook) and later opens the page in Safari or Chrome has to type the PIN again there.
 - Every browser sends a random device id (in the login and as `X-Device` header). After a right PIN it gets a signed "trusted device" credential for that account (180 days, bound to the device id and the current PIN).
 - Changing a PIN ends all older sessions of that account and the trusted-device status of all its devices.
-- Own device: 5 wrong PINs on one device lock that device for that account (1 min, doubling up to 1 h). Other phones are not affected, also in the same WLAN. Pages without a device id (an old cached version) are locked per network instead (IPv4 address or IPv6 /64).
+- Own device: 5 wrong PINs on one device lock that device for that account (1 min, doubling up to 1 h). Other phones are not affected, also in the same WLAN. Clients without a device id are locked per network instead (IPv4 address or IPv6 /64).
 - Per account and network (IPv4 address or IPv6 /64): wrong PINs from devices that are not trusted for the account are limited to 20, then one every 18 minutes. For the admin: 10, then one every 2 hours. An attacker elsewhere therefore only uses up the budget of their own network, never the one of the meeting.
 - Per account across all networks, against guessing with many addresses: 100, then 100 a day (admin: 30, then one an hour). This does not apply to the network the admin logged in from in the last 24 hours, i.e. the meeting's WLAN once the admin has logged in there. With a random 4-digit PIN this means about seven weeks on average to guess a member PIN, more than half a year for the admin.
 - When a budget is used up, only trusted devices can log in to that account from there until it refills. A trusted device that types 5 wrong PINs in a row counts as new until its next right PIN. Only one PIN check per device and account runs at a time.
@@ -46,21 +51,32 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 - Each member can make 50 changes at once, then 10 per second, so a script cannot flood the write queue.
 - Request bodies are limited to 16 kB (the import: 1 MB, read only after the admin session was checked).
 - The pages send a strict Content-Security-Policy (no inline scripts; `frontend/.env` keeps the build free of them), refuse to be shown in frames of other sites and set `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`frontend/public/.htaccess`). The API sets its own headers.
-- All writes go through one queue, and the audit log is written inside it, in the order of the changes. A bid is sent as the new total (netto), not as a step, so a page that gets no answer simply sends it again and nothing is doubled. Pages loaded before the October 2026 update still send steps with a request id; the server keeps accepting those and counts each step once.
-- Admin pages from before an update (no device id) still get the start PIN 1234 when they add a member, because that is what they show.
+- All writes go through one queue, and the audit log is written inside it, in the order of the changes. A bid is sent as the new total, not as a step, so a page that gets no answer simply sends it again and nothing is doubled.
 
 ## Common tasks
 
-Deploy a frontend change (the build reads `frontend/.env`, which must be there):
+Every command on its own line; never chain `rsync --delete` with other commands (a typo makes the last word its target, and `--delete` empties that folder).
+
+Install a new version: follow `DEPLOY.md`. It builds and tests the new version in a folder of its own, then swaps the folders while the service is stopped for a few seconds; the old folder stays as the way back.
+
+A small change made directly on the server, frontend:
 
 ```bash
-cd ~/fundraiser-app/frontend && npm run build && rsync -a --delete build/ ~/html/
+cd ~/fundraiser-app/frontend
 ```
 
-Deploy a backend change (`npm ci` only when `package-lock.json` changed):
+```bash
+npm run build
+```
 
 ```bash
-cd ~/fundraiser-app/backend && npm ci && supervisorctl restart fundraiser
+rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
+```
+
+Backend (`npm ci` only when `package-lock.json` changed):
+
+```bash
+supervisorctl restart fundraiser
 ```
 
 Check the security headers of the live site:
@@ -69,25 +85,55 @@ Check the security headers of the live site:
 curl -sI https://franz.uber.space/ | grep -iE 'content-security|x-frame|nosniff|referrer|permissions'
 ```
 
-Run the tests:
+Run the tests (`node test.js /nonexistent` uses a fresh temporary database; without the argument it uses a temporary copy of `database.json`; the real data is never touched):
 
 ```bash
-cd ~/fundraiser-app/backend && node test.js
-cd ~/fundraiser-app/frontend && CI=true npx react-scripts test --watchAll=false
+cd ~/fundraiser-app/backend
 ```
-
-`node test.js` runs against a temporary copy of `database.json`; the real data is never touched.
-
-Admin PIN lost: log in on the Uberspace and set a new one (replace `4711`):
 
 ```bash
-cd ~/fundraiser-app/backend && supervisorctl stop fundraiser && node set-pin.js admin 4711; supervisorctl start fundraiser
+node test.js /nonexistent
 ```
 
-Restore a backup:
+Admin PIN lost: set a new one on the Uberspace (replace `4711`; 4 to 8 digits):
 
 ```bash
 supervisorctl stop fundraiser
-cp ~/fundraiser-app/backend/data/backups/database-2026-10-12.json ~/fundraiser-app/backend/data/database.json
+```
+
+```bash
+cd ~/fundraiser-app/backend
+```
+
+```bash
+node set-pin.js admin 4711
+```
+
+```bash
 supervisorctl start fundraiser
 ```
+
+Restore a backup (pick the file from `ls ~/fundraiser-app/backend/data/backups/`):
+
+```bash
+supervisorctl stop fundraiser
+```
+
+```bash
+cp ~/fundraiser-app/backend/data/backups/database-2026-10-12.json ~/fundraiser-app/backend/data/database.json
+```
+
+```bash
+supervisorctl start fundraiser
+```
+
+## Demo
+
+A demo without a server, with example members and neutral branding, runs entirely in the browser (`frontend/src/demo.js`; every visitor's changes stay in their own browser):
+
+```bash
+cd frontend
+npm run build:demo
+```
+
+This writes one self-contained page, `frontend/build-demo/bietrunde-demo.html`, which is published as a Claude artifact. Do not put the demo on the live server: next to the real app it would lead visitors to the real member list.

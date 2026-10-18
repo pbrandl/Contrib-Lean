@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
@@ -19,7 +19,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "build:demo": "REACT_APP_DEMO=1 BUILD_PATH=build-demo PUBLIC_URL=. react-scripts build && python3 -I scripts/demo-inline.py build-demo build-demo/bietrunde-demo.html"
   },
   "eslintConfig": {
     "extends": [

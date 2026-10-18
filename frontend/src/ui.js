@@ -116,7 +116,7 @@ export function Callout({ children, action }) {
   );
 }
 
-export function PinInput({ id, value, onChange, label, autoFocus = false, large = false }) {
+export function PinInput({ id, value, onChange, label, autoFocus = false }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1.5 block text-sm font-semibold">{label}</label>
@@ -130,7 +130,7 @@ export function PinInput({ id, value, onChange, label, autoFocus = false, large 
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
         autoFocus={autoFocus}
-        className={`field ${large ? 'py-3 text-center text-3xl tracking-[0.5em]' : 'tracking-[0.3em]'}`}
+        className="field tracking-[0.3em]"
       />
     </div>
   );

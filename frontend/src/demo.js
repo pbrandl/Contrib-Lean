@@ -300,5 +300,3 @@ export async function demoApi(path, { method = 'GET', body, token } = {}) {
   const copy = body === undefined ? undefined : JSON.parse(JSON.stringify(body));
   return JSON.parse(JSON.stringify(handle(method, path, copy, token)));
 }
-
-export { DemoError };
