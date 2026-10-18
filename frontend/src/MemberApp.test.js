@@ -197,7 +197,7 @@ test('desktop: after a failed save the field keeps the focus, and keys typed els
   expect(await screen.findByText('Nicht gespeichert. Der Server ist gerade ausgelastet.')).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent('ausgelastet');
   expect(input).toHaveFocus();
-  input.blur();
+  act(() => input.blur());
   fireEvent.keyDown(document.body, { key: 'Backspace' });
   expect(input).toHaveValue('1.585');
   expect(input).toHaveFocus();

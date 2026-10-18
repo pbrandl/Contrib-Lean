@@ -236,7 +236,7 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
 
         {keypad && (
           <div className="keypad pin-keypad">
-            {PIN_KEYS.map((key, i) => (key === '' ? <span key={i} /> : (
+            {PIN_KEYS.map(key => (key === '' ? <span key="gap" /> : (
               <button
                 key={key}
                 type="button"
