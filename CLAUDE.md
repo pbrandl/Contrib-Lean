@@ -77,7 +77,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 - Tokens are stateless HMAC-signed payloads `{ uid, pv, role, exp }`. `authenticate(role)` checks the signature, the role and that `pv` equals the user's current `pinVersion`, so every PIN change (`setPin`) ends all older sessions.
 - PIN-change endpoints return a fresh `session`, and the frontend must store it. `AdminApp.logout` ignores a 401 from a request that used an older token.
-- Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`.
+- Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`. Earlier logouts: "Abmelden", the back gesture on the member page, any PIN change, cleared browser data. The token is per browser, so a mail app's built-in browser and Safari/Chrome log in separately.
 - **Login throttling** (in memory, lost on restart; README "Security model" has the numbers). Never key anything by IP alone: the whole meeting shares one address.
   - Every browser sends a device id (`deviceId()` in `lib.js`, 22 base64url characters, in the login body and as `X-Device` header).
   - Own-device lock: `deviceFailures`, keyed `userId|d:<device>`; pages without a device id fall back to `userId|n:<IPv4 or IPv6 /64>` (`networkOf`).

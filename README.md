@@ -30,6 +30,8 @@ Admins manage members, PINs, the target ("Bedarf") and import/export at https://
 - PINs are 4–8 digits, stored as scrypt hashes, never sent to the browser, exported or logged.
 - Members the admin adds one by one get a random 4-digit start PIN, shown to the admin once. Members created by an import get the PIN from the file, otherwise the shared start PIN 1234 (everybody who knows it can log in to accounts that still use it; members should change it after their first login).
 - Login returns a signed session token. Members stay logged in for 30 days, admins until the tab is closed (max. 12 h).
+  A member is logged out earlier by "Abmelden", by the back gesture on their own page (on purpose, so nobody stays logged in on a borrowed phone), by any PIN change (it ends all other sessions of that account) and by clearing the browser data or a private window.
+  The login is stored per browser: a member who opened the link from the mail inside the mail app's own browser (Gmail, Outlook) and later opens the page in Safari or Chrome has to type the PIN again there.
 - Every browser sends a random device id (in the login and as `X-Device` header). After a right PIN it gets a signed "trusted device" credential for that account (180 days, bound to the device id and the current PIN).
 - Changing a PIN ends all older sessions of that account and the trusted-device status of all its devices.
 - Own device: 5 wrong PINs on one device lock that device for that account (1 min, doubling up to 1 h). Other phones are not affected, also in the same WLAN. Pages without a device id (an old cached version) are locked per network instead (IPv4 address or IPv6 /64).
