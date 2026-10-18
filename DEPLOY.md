@@ -95,7 +95,7 @@ Hier muss `Compiled successfully.` stehen.
 
 ## 5. Umschalten
 
-Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Wer genau dann speichert, bekommt eine Fehlermeldung und speichert danach einfach noch einmal.
+Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Offene Seiten zeigen so lange „Gleich wieder da“ und laufen danach von selbst weiter (ab Version 1; beim Einspielen von Version 1 selbst zeigen die alten Seiten noch eine Fehlermeldung). Wer genau dann speichert, speichert danach einfach noch einmal.
 
 ```bash
 cd ~

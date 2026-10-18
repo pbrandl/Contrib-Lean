@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, Download, Search, Trash2, Upload, X } from 'lucide-react';
 import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, loginWithPin, parseAmount, rememberTrust, round2, today, totalGross, useAmountMode, useNotice, usePolling } from './lib';
 import { membersFromCsv, membersToCsv } from './csv';
-import { Band, BusyButton, Callout, LoadingPage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { Band, BusyButton, Callout, LoadingPage, MaintenancePage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 
 const countMembers = (n) => (n === 1 ? '1 Mitglied' : `${n} Mitglieder`);
 
@@ -59,7 +59,7 @@ function AdminLogin({ onLogin }) {
 function AdminPage({ session, onSession, onLogout, showNotice }) {
   const { token } = session;
   const [data, setData] = useState(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [adminPinOpen, setAdminPinOpen] = useState(false);
   const [mode, toggleMode] = useAmountMode('franzwerk.adminMode');
 
@@ -82,9 +82,9 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   const load = useCallback(async () => {
     try {
       await call('/admin/data');
-      setLoadFailed(false);
+      setLoadError(null);
     } catch (err) {
-      if (err.status !== 401) setLoadFailed(true);
+      if (err.status !== 401) setLoadError(err.maintenance ? 'maintenance' : 'offline');
     }
   }, [call]);
 
@@ -93,7 +93,8 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   }, [load]);
   usePolling(load, 15000);
 
-  if (!data) return loadFailed ? <OfflinePage onRetry={load} /> : <LoadingPage />;
+  if (!data && loadError === 'maintenance') return <MaintenancePage onRetry={load} />;
+  if (!data) return loadError ? <OfflinePage onRetry={load} /> : <LoadingPage />;
 
   const changeAdminPin = async (pin) => {
     const result = await call('/admin/users/admin/pin', { method: 'PUT', body: { pin, device: deviceId() || undefined } });

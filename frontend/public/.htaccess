@@ -2,6 +2,9 @@
 RewriteEngine On
 RewriteRule ^admin/?$ index.html [L]
 
+# Unknown addresses: the app shows its "not found" page, with status 404.
+ErrorDocument 404 /index.html
+
 <IfModule mod_headers.c>
   # Security headers for the pages (the API sets its own in backend/server.js).
   # Scripts, styles, fonts and images only from this site; no inline scripts (see .env);

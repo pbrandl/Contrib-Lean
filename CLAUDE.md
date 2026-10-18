@@ -58,7 +58,7 @@ Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own fol
 
 ### Hosting
 
-Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/admin` to `index.html`, and `App.js` picks `AdminApp` or `MemberApp` from the path. The Uberspace web backend forwards `/api` **with the full path** to the supervisor service `fundraiser` on port 3001, so every route lives on the `/api` router. `trust proxy` is `1` (exactly one proxy), so `req.ip` is the client address from `X-Forwarded-For`.
+Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/admin` to `index.html` and serves `index.html` as `ErrorDocument 404`; `App.js` picks `AdminApp`, `MemberApp` or `NotFoundPage` from the path. While the service is stopped, the Uberspace proxy answers `/api` with 502/503/504 and HTML; `api()` turns that (and only that, the server's own errors are JSON) into `ApiError.maintenance`, and the pages show `MaintenancePage`, which retries every 5 s. The Uberspace web backend forwards `/api` **with the full path** to the supervisor service `fundraiser` on port 3001, so every route lives on the `/api` router. `trust proxy` is `1` (exactly one proxy), so `req.ip` is the client address from `X-Forwarded-For`.
 
 ### Data (`backend/data/`)
 

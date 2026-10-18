@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Lock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Lock, SearchX, Wrench } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
 import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed, usesKeypad } from './lib';
@@ -338,6 +338,70 @@ export function LoadingPage() {
     <div className="loading-page on-dark" role="status" aria-label="Lädt">
       {slow && <Spinner className="h-8 w-8 text-white" />}
     </div>
+  );
+}
+
+// Full blue screen like the PIN entry, for the moments the app itself cannot be used.
+function StatusScreen({ icon, title, children }) {
+  return (
+    <main className="status-screen on-dark">
+      <div className="status-inner">
+        <Logo className="status-logo" />
+        <span className="pin-lock" aria-hidden="true">{icon}</span>
+        <h1>{title}</h1>
+        {children}
+      </div>
+    </main>
+  );
+}
+
+const MAINTENANCE_RETRY_MS = 5000;
+
+// The server does not answer (an update, a restart): the page asks again every few seconds
+// and goes back to the app on its own as soon as the server is there again.
+export function MaintenancePage({ onRetry }) {
+  const [busy, setBusy] = useState(false);
+  const retry = useRef(onRetry);
+  const alive = useRef(true);
+  useEffect(() => {
+    retry.current = onRetry;
+  }, [onRetry]);
+
+  const check = async () => {
+    setBusy(true);
+    try {
+      await retry.current();
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    alive.current = true;
+    const id = setInterval(() => { retry.current(); }, MAINTENANCE_RETRY_MS);
+    return () => {
+      alive.current = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  return (
+    <StatusScreen icon={<Wrench className="h-6 w-6" />} title="Gleich wieder da">
+      <p>Die Bietrunde wird gerade kurz gewartet, meist dauert das nur eine Minute. Deine Gebote sind gespeichert.</p>
+      <p className="status-hint" role="status">Diese Seite prüft alle paar Sekunden von selbst und geht dann weiter.</p>
+      <BusyButton type="button" className="pin-submit status-action" busy={busy} busyLabel="Wird geprüft" onClick={check}>
+        Jetzt prüfen
+      </BusyButton>
+    </StatusScreen>
+  );
+}
+
+export function NotFoundPage({ home = '/' }) {
+  return (
+    <StatusScreen icon={<SearchX className="h-6 w-6" />} title="Seite nicht gefunden">
+      <p>Diese Adresse gibt es bei der Bietrunde nicht. Vielleicht ist der Link nicht ganz vollständig.</p>
+      <a href={home} className="pin-submit status-action">Zur Bietrunde</a>
+    </StatusScreen>
   );
 }
 

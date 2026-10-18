@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useAmountMode, useNotice, usePolling } from './lib';
-import { Band, LoadingPage, Logo, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { Band, LoadingPage, Logo, MaintenancePage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -58,8 +58,9 @@ function FrontPage({ onLogin }) {
     try {
       const data = await api('/public');
       setState({ status: 'ready', data });
-    } catch {
-      setState(prev => (prev.status === 'ready' ? prev : { status: 'offline' }));
+    } catch (err) {
+      if (err.maintenance) setState({ status: 'maintenance' });
+      else setState(prev => (prev.status === 'ready' ? prev : { status: 'offline' }));
     }
   }, []);
 
@@ -105,6 +106,7 @@ function FrontPage({ onLogin }) {
 
   if (state.status === 'loading') return <LoadingPage />;
   if (state.status === 'offline') return <OfflinePage onRetry={load} />;
+  if (state.status === 'maintenance') return <MaintenancePage onRetry={load} />;
 
   const { data } = state;
   const members = [...data.members].sort(byName);
@@ -223,7 +225,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
   const { token } = session;
   const [me, setMe] = useState(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [mode, toggleMode] = useAmountMode('franzwerk.mode');
   const [sheet, setSheet] = useState(null);
   // The sheet whose value is being saved. It can be closed before the answer comes.
@@ -295,10 +297,10 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     if (sendingRef.current) return;
     try {
       apply(await api('/me', { token }));
-      setLoadFailed(false);
+      setLoadError(null);
     } catch (err) {
       if (err.status === 401) onLogout(err.message);
-      else setLoadFailed(true);
+      else setLoadError(err.maintenance ? 'maintenance' : 'offline');
     }
   }, [token, apply, onLogout]);
 
@@ -372,7 +374,9 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     }
   }, [sheet, token, mode, apply, closeSheet, load, onLogout, showNotice]);
 
-  if (!me) return loadFailed ? <OfflinePage onRetry={load} /> : <LoadingPage />;
+  // An open sheet stays, so nothing typed is lost; saving then shows the maintenance message.
+  if (loadError === 'maintenance' && !sheet) return <MaintenancePage onRetry={load} />;
+  if (!me) return loadError ? <OfflinePage onRetry={load} /> : <LoadingPage />;
 
   const changePin = async (pin) => {
     try {

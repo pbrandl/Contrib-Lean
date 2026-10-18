@@ -2,14 +2,24 @@ import { useEffect, useState } from 'react';
 import AdminApp from './AdminApp';
 import MemberApp from './MemberApp';
 import { DEMO, DEMO_ADMIN_PIN, DEMO_PIN, resetDemo } from './demo';
+import { NotFoundPage } from './ui';
 
-// Apache serves index.html for /admin as well (see public/.htaccess).
+// Apache serves index.html for /admin as well, and for every unknown address with
+// status 404 (see public/.htaccess).
 const base = process.env.PUBLIC_URL || '';
-const isAdminPath = (path) => path.replace(/\/+$/, '') === `${base}/admin`;
+const pageOf = (path) => {
+  const page = path.replace(/\/+$/, '');
+  if (page === base || page === `${base}/index.html`) return 'member';
+  if (page === `${base}/admin`) return 'admin';
+  return 'unknown';
+};
 
 export default function App() {
   if (DEMO) return <DemoApp />;
-  return isAdminPath(window.location.pathname) ? <AdminApp /> : <MemberApp />;
+  const page = pageOf(window.location.pathname);
+  if (page === 'admin') return <AdminApp />;
+  if (page === 'unknown') return <NotFoundPage home={`${base}/`} />;
+  return <MemberApp />;
 }
 
 // The demo is one page without a server: #admin switches to the admin view.

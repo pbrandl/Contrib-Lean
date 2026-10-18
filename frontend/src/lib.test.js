@@ -1,4 +1,4 @@
-import { ApiError, TIMEOUT_MS, api, deviceId, isNewer, loginWithPin, rememberTrust, trustFor } from './lib';
+import { ApiError, MAINTENANCE_MESSAGE, TIMEOUT_MS, api, deviceId, isNewer, loginWithPin, rememberTrust, trustFor } from './lib';
 
 const respond = (body, status = 200, headers = {}) => Promise.resolve({
   ok: status >= 200 && status < 300,
@@ -46,6 +46,13 @@ test('login sends device id and credential, stores the new credential, returns t
 test('errors carry status, message and Retry-After', async () => {
   global.fetch = jest.fn(() => respond({ error: 'Zu viele Fehlversuche.' }, 429, { 'retry-after': '60' }));
   await expect(api('/login', { method: 'POST', body: {} })).rejects.toMatchObject({ status: 429, message: 'Zu viele Fehlversuche.', retryAfter: 60 });
+});
+
+test('the proxy page of a stopped server counts as maintenance, the server\'s own 503 does not', async () => {
+  global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) }));
+  await expect(api('/public')).rejects.toMatchObject({ status: 502, maintenance: true, message: MAINTENANCE_MESSAGE });
+  global.fetch = jest.fn(() => respond({ error: 'Der Server ist gerade ausgelastet.' }, 503));
+  await expect(api('/login', { method: 'POST', body: {} })).rejects.toMatchObject({ status: 503, maintenance: false, message: 'Der Server ist gerade ausgelastet.' });
 });
 
 test('a request without an answer fails after the timeout', async () => {

@@ -36,3 +36,11 @@ test('/admin shows the admin login', async () => {
   expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument();
   expect(screen.getByLabelText('PIN')).toBeInTheDocument();
 });
+
+test('an unknown address shows the not-found page with a link to the start', () => {
+  window.history.pushState({}, '', '/gibt-es-nicht');
+  render(<App />);
+  expect(screen.getByRole('heading', { name: 'Seite nicht gefunden' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Zur Bietrunde' })).toHaveAttribute('href', '/');
+  expect(global.fetch).not.toHaveBeenCalled();
+});

@@ -8,13 +8,19 @@ export const TIMEOUT_MS = 15000;
 
 // status 0: no answer. `timeout`: the request may still have reached the server.
 export class ApiError extends Error {
-  constructor(status, message, { retryAfter = 0, timeout = false } = {}) {
+  constructor(status, message, { retryAfter = 0, timeout = false, maintenance = false } = {}) {
     super(message);
     this.status = status;
     this.retryAfter = retryAfter;
     this.timeout = timeout;
+    this.maintenance = maintenance;
   }
 }
+
+// While the service is stopped (an update, a restart), the Uberspace proxy answers /api
+// itself with 502, 503 or 504 and an HTML page. The server's own errors are JSON.
+export const MAINTENANCE_MESSAGE = 'Die Bietrunde wird gerade kurz gewartet. Versuche es in einer Minute noch einmal.';
+const PROXY_ERRORS = [502, 503, 504];
 
 // `timeout`: longer for requests that may take a while on the server (import).
 export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT_MS } = {}) {
@@ -57,6 +63,9 @@ export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT
       data = await response.json();
     } catch {
       // empty or non-JSON body (or the answer stopped halfway)
+    }
+    if (!response.ok && data === null && PROXY_ERRORS.includes(response.status)) {
+      throw new ApiError(response.status, MAINTENANCE_MESSAGE, { maintenance: true });
     }
     if (!response.ok) {
       const retryAfter = Number(response.headers && response.headers.get && response.headers.get('Retry-After')) || 0;

@@ -11,6 +11,8 @@ Die erste fertige Version, gebaut für die Bietrunde im Oktober 2026. Pakete (`p
 - PIN-Eingabe auf eigenem Bildschirm: ein Kästchen pro Ziffer, Ziffernblock am Handy. PINs haben 4 bis 8 Ziffern.
 - Meldungen oben, grün für Gespeichertes und rot für Fehler. Ladekreisel nur, wenn etwas länger als 0,2 Sekunden dauert.
 - Passt ohne Scrollen auf alle Handys, auch quer gehalten und auf kleinen iPhones.
+- Wartungsseite „Gleich wieder da“, solange der Server nicht antwortet (etwa beim Einspielen): Sie prüft alle 5 Sekunden und geht von selbst zurück zur App. Ein offener Eingabe-Bildschirm bleibt dabei stehen.
+- Seite „Seite nicht gefunden“ für unbekannte Adressen, mit Status 404.
 
 **Admin**
 

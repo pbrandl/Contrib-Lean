@@ -728,6 +728,51 @@
   }
 
   /* Page start: the blue top the page opens with, nothing else until it takes a while. */
+  /* Maintenance and "not found": the blue of the PIN screen, centred on the screen. */
+  .status-screen {
+    @apply flex bg-werkblau text-white;
+    min-height: 100vh;
+    min-height: 100svh;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .status-inner {
+    display: grid;
+    justify-items: start;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 30rem;
+    margin: auto;
+    padding: 2rem max(16px, env(safe-area-inset-right, 0px)) 2.5rem max(16px, env(safe-area-inset-left, 0px));
+  }
+
+  .status-logo {
+    height: 5.5rem;
+    width: auto;
+    margin-bottom: 1.75rem;
+  }
+
+  .status-inner h1 {
+    @apply font-display font-bold;
+    font-size: clamp(1.6rem, 7vw, 2rem);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .status-inner p {
+    color: rgb(255 255 255 / 0.75);
+  }
+
+  .status-inner .status-hint {
+    font-size: 0.875rem;
+    color: rgb(255 255 255 / 0.6);
+  }
+
+  .status-action {
+    margin-top: 1.25rem;
+  }
+
   .loading-page {
     @apply grid place-items-center bg-werkblau;
     min-height: 16rem;

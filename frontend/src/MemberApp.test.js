@@ -251,3 +251,22 @@ test('a save that ends after logging out changes nothing on the next page', asyn
   expect(screen.queryByText(/Dein Beitrag ist jetzt/)).not.toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
 });
+
+test('while the server is stopped the maintenance page shows and goes back to the page on its own', async () => {
+  jest.useFakeTimers();
+  server();
+  const answer = global.fetch.getMockImplementation();
+  let down = true;
+  // The Uberspace proxy answers with an HTML page, not JSON.
+  global.fetch.mockImplementation((url, options) => (down
+    ? Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) })
+    : answer(url, options)));
+  render(<MemberApp />);
+  expect(await screen.findByRole('heading', { name: 'Gleich wieder da' })).toBeInTheDocument();
+  expect(screen.getByText(/Deine Gebote sind gespeichert/)).toBeInTheDocument();
+  down = false;
+  await act(async () => { jest.advanceTimersByTime(5000); });
+  expect(await screen.findByTestId('own-amount')).toHaveTextContent('1.585');
+  expect(screen.queryByRole('heading', { name: 'Gleich wieder da' })).not.toBeInTheDocument();
+  jest.useRealTimers();
+});
