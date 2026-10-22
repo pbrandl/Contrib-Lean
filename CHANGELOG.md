@@ -9,7 +9,7 @@ Neues Paket im Frontend (`fflate`, für Excel-Dateien): Beim Einspielen im Ordne
 - Einstellungen auf jeder Seite (Zahnrad oben rechts): Darstellung hell, dunkel oder wie das System, Sprache und Beträge netto oder brutto. Pro Gerät gemerkt; die Netto/Brutto-Wahl aus Version 1 wird übernommen. Der Netto/Brutto-Knopf auf der Gebotskarte entfällt, dort steht nur noch, was gerade gilt.
 - Karten heben sich deutlicher vom Hintergrund ab.
 - Neue Kopfzeile auf der Mitglieder- und der Admin-Seite: links ein Zurück-Pfeil, in der Mitte der Name, rechts die Einstellungen. Der Pfeil und die Zurück-Taste des Browsers führen zurück zur Namensliste bzw. zur Admin-Anmeldung und melden dabei ab.
-- PIN-Eingabe: Das Schloss steht oben rechts neben den Einstellungen, der Name rückt nach oben.
+- PIN-Eingabe: Das Schloss steht oben rechts neben den Einstellungen, der Name rückt nach oben. Ein Kästchen erscheint erst mit seiner Ziffer, so bleibt keines leer.
 - Die App gibt es auf Deutsch, Englisch und Spanisch. Beim ersten Besuch gilt die Sprache des Browsers, sonst Deutsch. Zahlen erscheinen im Format der Sprache (1.585,50 oder 1,585.50), auch beim Eintippen.
 - Dunkelmodus für alle Seiten.
 - Der Entwurf der Gebotseingabe (`docs/gebotseingabe-entwurf.html`) ist entfernt; die Demo zeigt die ganze App.

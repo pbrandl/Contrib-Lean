@@ -144,8 +144,8 @@ export function PinInput({ id, value, onChange, label, autoFocus = false }) {
   );
 }
 
-// Login with a PIN on a dark blue screen. Every digit gets its own box: it shows briefly,
-// then turns into a dot, and the next empty box appears (the length is not known, so the
+// Login with a PIN on a dark blue screen. Every digit gets its own box, which appears with
+// it: the digit shows briefly, then turns into a dot (the length is not known, so the
 // boxes start left and grow to the right, up to PIN_MAX). Touch devices get the page's own
 // keypad; on computers a hidden field takes the keys. `onSubmit` returns a promise; its
 // error message is shown below the boxes. `back`: a link or button above the title.
@@ -206,7 +206,6 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
     }
   };
 
-  const boxes = Math.min(pin.length + 1, PIN_MAX);
   return (
     <form className="pin-screen on-dark" onSubmit={submit} noValidate>
       <div className="pin-inner">
@@ -234,15 +233,14 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
           className="sr-only"
         />
         <div className="pin-boxes" aria-hidden="true" onClick={() => { if (!keypad && inputRef.current) inputRef.current.focus(); }}>
-          {Array.from({ length: boxes }, (_, i) => {
-            const filled = i < pin.length;
-            const active = i === pin.length;
-            return (
-              <span key={active ? `active-${i}` : i} className={`pin-box${filled ? ' filled' : ''}${active ? ' active' : ''}`}>
-                {filled && (i === reveal ? pin[i] : <span className="pin-dot" />)}
-              </span>
-            );
-          })}
+          {/* A box appears with its digit, so none stays empty; the newest one has the white
+              edge. Before the first digit an invisible box keeps the row's height. */}
+          {pin.length === 0 && <span className="pin-box pin-box-ghost" />}
+          {Array.from(pin, (digit, i) => (
+            <span key={i} className={`pin-box filled${i === pin.length - 1 ? ' active' : ''}`}>
+              {i === reveal ? digit : <span className="pin-dot" />}
+            </span>
+          ))}
         </div>
         <p className="pin-error" role="alert">{error}</p>
 

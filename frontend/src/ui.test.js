@@ -2,19 +2,19 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { render } from './test-utils';
 import { PinLogin } from './ui';
 
-test('PIN boxes: one empty box to start, a digit shows briefly and becomes a dot, at most 8', async () => {
+test('PIN boxes: a box appears with each digit, the digit shows briefly and becomes a dot, at most 8', async () => {
   jest.useFakeTimers();
   window.matchMedia = jest.fn(query => ({ matches: query === '(pointer: coarse)', media: query }));
   const onSubmit = jest.fn(() => Promise.reject(new Error('PIN falsch.')));
   const { container } = render(<PinLogin title="Anna" onSubmit={onSubmit} />);
-  const boxes = () => [...container.querySelectorAll('.pin-box')];
-  expect(boxes()).toHaveLength(1);
-  expect(boxes()[0]).toHaveClass('active');
+  const boxes = () => [...container.querySelectorAll('.pin-box:not(.pin-box-ghost)')];
+  expect(boxes()).toHaveLength(0);
 
   const key = (k) => fireEvent.click(screen.getByRole('button', { name: k }));
   key('7');
-  expect(boxes()).toHaveLength(2);
+  expect(boxes()).toHaveLength(1);
   expect(boxes()[0]).toHaveTextContent('7');
+  expect(boxes()[0]).toHaveClass('active');
   act(() => { jest.advanceTimersByTime(800); });
   expect(boxes()[0].querySelector('.pin-dot')).not.toBeNull();
   expect(boxes()[0]).not.toHaveTextContent('7');
@@ -30,7 +30,7 @@ test('PIN boxes: one empty box to start, a digit shows briefly and becomes a dot
   await act(async () => {});
   expect(onSubmit).toHaveBeenCalledWith('7123456');
   expect(screen.getByRole('alert')).toHaveTextContent('PIN falsch.');
-  expect(boxes()).toHaveLength(1);
+  expect(boxes()).toHaveLength(0);
   jest.useRealTimers();
 });
 

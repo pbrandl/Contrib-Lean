@@ -248,11 +248,11 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 ### PIN entry (member PIN step and admin login, `PinLogin` in `ui.js`)
 
 - A screen of its own in the dark blue, white only (no yellow). The top row holds the back link left and, right, a small lock icon next to the settings gear (since 2.0.0; it used to sit above the name and took space).
-- One box per digit, left-aligned. It starts with one empty box, because the length of the PIN is not known; every digit shows briefly (0.7 s), then turns into a round dot, and the next empty box appears, up to 8. The box for the next digit has a white edge that is highlighted outward once, in one smooth movement, whenever it appears.
+- One box per digit, left-aligned, up to 8. A box appears together with its digit (since 2.0.0; there is no empty box, so none stays open at the end, and before the first digit an invisible box keeps the row's height). Every digit shows briefly (0.7 s), then turns into a round dot. The box of the newest digit has a white edge that is highlighted outward once, in one smooth movement, when it appears.
 - Touch devices get the page's own keypad (digits, backspace); on computers a visually hidden field (`#pin`, label "PIN") takes the keys, Enter logs in. "Anmelden" is enabled from 4 digits.
 - PINs have 4 to 8 digits (server, app, CSV import and mail script).
 - While the PIN is checked, "Anmelden" stays as it is; only after 0.2 s it shows a spinner. The page start (`LoadingPage`) works the same way: the blue top, and a spinner only after 0.2 s. No "Lädt …" or "Wird geprüft …" texts.
-- It fits on one screen like the bid sheet: on short screens the lock, the intro and the hint go away and the keypad shrinks (rows of at least 44 px).
+- It fits on one screen like the bid sheet: on short screens the intro and the hint go away and the keypad shrinks (rows of at least 44 px).
 
 ### Banners (whole app: member page, front page and admin)
 
