@@ -1,4 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { DEMO } from './demo';
 import { LANGUAGES, browserLanguage, setLanguage, t } from './i18n';
 import { legacyMode, settingsStore } from './lib';
 
@@ -66,7 +67,8 @@ export function SettingsProvider({ children }) {
   }, [values.theme]);
 
   useEffect(() => {
-    document.title = t('app.title');
+    // The demo carries no organisation's name (see Logo in ui.js).
+    document.title = DEMO ? `${t('app.name')} Demo` : t('app.title');
   }, [values.language]);
 
   const value = useMemo(() => ({
