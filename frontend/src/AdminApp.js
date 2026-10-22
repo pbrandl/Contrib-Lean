@@ -5,6 +5,10 @@ import { EXPORT_FORMATS, IMPORT_ACCEPT, readImportFile } from './files';
 import { useAmountMode, useT } from './settings';
 import { Band, BusyButton, Callout, LoadingPage, MaintenancePage, Notice, OfflinePage, PinChange, PinInput, PinLogin, Progress, TopBar } from './ui';
 
+// Like the member page: the admin page has its own history entry, so the browser's back
+// button (and the back arrow) leaves it and logs out, back to the admin PIN screen.
+const isAdminEntry = () => !!(window.history.state && window.history.state.admin);
+
 function readSession() {
   const session = adminSession.get();
   return session && session.role === 'admin' && session.token ? session : null;
@@ -24,6 +28,7 @@ export default function AdminApp() {
   // A request that was sent with an older token (before a PIN change) must not log out.
   const logout = useCallback((message, usedToken) => {
     if (usedToken && current.current && current.current.token !== usedToken) return;
+    if (isAdminEntry()) window.history.replaceState(null, '');
     adminSession.clear();
     current.current = null;
     setSession(null);
@@ -94,6 +99,22 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   }, [load]);
   usePolling(load, 15000);
 
+  // A fresh entry on every start (also after a reload), so going back is always a same-page step.
+  useEffect(() => {
+    if (isAdminEntry()) window.history.replaceState(null, '');
+    window.history.pushState({ admin: true }, '');
+    const onPop = () => {
+      if (!isAdminEntry()) onLogout();
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [onLogout]);
+
+  const leave = () => {
+    if (isAdminEntry()) window.history.back();
+    else onLogout();
+  };
+
   if (!data && loadError === 'maintenance') return <MaintenancePage onRetry={load} />;
   if (!data) return loadError ? <OfflinePage onRetry={load} /> : <LoadingPage />;
 
@@ -108,7 +129,7 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   return (
     <>
       <Band className="pb-8">
-        <TopBar label={t('admin.title')} onLogout={() => onLogout()} />
+        <TopBar label={t('admin.title')} onBack={leave} />
         <Progress total={data.totalRaised} totalGross={totalGross(data)} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} />
       </Band>
 

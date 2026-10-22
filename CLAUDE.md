@@ -85,7 +85,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 - Tokens are stateless HMAC-signed payloads `{ uid, pv, role, exp }`. `authenticate(role)` checks the signature, the role and that `pv` equals the user's current `pinVersion`, so every PIN change (`setPin`) ends all older sessions.
 - PIN-change endpoints return a fresh `session`, and the frontend must store it. `AdminApp.logout` ignores a 401 from a request that used an older token.
-- Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`. Earlier logouts: "Abmelden", the back gesture on the member page, any PIN change, cleared browser data. The token is per browser, so a mail app's built-in browser and Safari/Chrome log in separately.
+- Members keep the token in `localStorage` (30 days), admins in `sessionStorage` (12 h); see `memberSession`/`adminSession` in `lib.js`. Earlier logouts: the back arrow or the browser's back button on the member page, any PIN change, cleared browser data. The token is per browser, so a mail app's built-in browser and Safari/Chrome log in separately.
 - **Login throttling** (in memory, lost on restart; README "Security model" has the numbers). Never key anything by IP alone: the whole meeting shares one address.
   - Every browser sends a device id (`deviceId()` in `lib.js`, 22 base64url characters, in the login body and as `X-Device` header).
   - Own-device lock: `deviceFailures`, keyed `userId|d:<device>`; pages without a device id fall back to `userId|n:<IPv4 or IPv6 /64>` (`networkOf`).
@@ -206,8 +206,8 @@ The design prototype the bid entry was built from (`docs/gebotseingabe-entwurf.h
   - Progress bar.
   - It must fit down to 320 px: numbers wrap to a new line instead of being cut off.
   - Generous spacing between the top bar, the numbers, the bar and the line below it, so it does not look crowded. The values are in the prototype CSS (`.topbar`, `.stats`, `.track`, `.meta`, `.band-inner`).
-  - Top bar: wordmark/logo left, the member's name centered, "Abmelden" right. "Abmelden" is plain text without padding or highlight, in the same font size as the name.
-  - "Abmelden" and the total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
+  - Top bar (since 2.0.0, the same on the admin page, `TopBar` in `ui.js`): a back arrow left, the member's name (or "Admin") centered, the settings gear right; no logo and no "Abmelden" text. The arrow does what the browser's back button does: the page has its own history entry (`{ member: true }` / `{ admin: true }`), and leaving it logs out (screen readers hear "Abmelden"). Back on the admin page leads to the admin PIN screen.
+  - The total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
   - Outside the page (overscroll, the phone's safe areas) the light page colour continues below the content, never a blue strip at the bottom. Android and desktop browsers show blue above the page; iOS paints both edges in one colour (the body's), so there the top is light too. That is accepted: a blue body would bring back the blue strip at the bottom.
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
   - Heading left; right on the same line the current mode as plain grey text ("Netto"/"Brutto"), not a button (2.0.0).
@@ -247,7 +247,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 
 ### PIN entry (member PIN step and admin login, `PinLogin` in `ui.js`)
 
-- A screen of its own in the dark blue, white only (no yellow), with a lock icon above the name.
+- A screen of its own in the dark blue, white only (no yellow). The top row holds the back link left and, right, a small lock icon next to the settings gear (since 2.0.0; it used to sit above the name and took space).
 - One box per digit, left-aligned. It starts with one empty box, because the length of the PIN is not known; every digit shows briefly (0.7 s), then turns into a round dot, and the next empty box appears, up to 8. The box for the next digit has a white edge that is highlighted outward once, in one smooth movement, whenever it appears.
 - Touch devices get the page's own keypad (digits, backspace); on computers a visually hidden field (`#pin`, label "PIN") takes the keys, Enter logs in. "Anmelden" is enabled from 4 digits.
 - PINs have 4 to 8 digits (server, app, CSV import and mail script).

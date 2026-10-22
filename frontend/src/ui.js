@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Lock, SearchX, Settings, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronLeft, Lock, SearchX, Settings, Wrench } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
 import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed, usesKeypad } from './lib';
@@ -33,23 +33,23 @@ export function Band({ children, className = '' }) {
 export function SettingsButton({ className = '' }) {
   const { openSettings, t } = useSettings();
   return (
-    <button type="button" className={`settings-button ${className}`} onClick={openSettings} aria-label={t('settings.open')}>
+    <button type="button" className={`icon-button ${className}`} onClick={openSettings} aria-label={t('settings.open')}>
       <Settings className="h-6 w-6" aria-hidden="true" />
     </button>
   );
 }
 
-// Logo left, the name in the middle, settings and "Abmelden" right.
-export function TopBar({ label, onLogout }) {
+// Header row of the member and admin pages: back on the left (leaves the page and logs
+// out, like the browser's back button), the name in the middle, the settings on the right.
+export function TopBar({ label, onBack }) {
   const t = useT();
   return (
     <div className="topbar">
-      <Logo className="h-14 w-auto" />
+      <button type="button" onClick={onBack} className="icon-button justify-self-start" aria-label={t('common.logout')}>
+        <ChevronLeft className="h-7 w-7" aria-hidden="true" />
+      </button>
       <span className="topbar-name">{label}</span>
-      <span className="topbar-end">
-        <SettingsButton />
-        <button type="button" onClick={onLogout} className="topbar-logout">{t('common.logout')}</button>
-      </span>
+      <SettingsButton className="justify-self-end" />
     </div>
   );
 }
@@ -211,10 +211,10 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
       <div className="pin-inner">
         <div className="pin-top">
           {back}
-          <SettingsButton className="ml-auto" />
+          <span className="pin-top-lock" aria-hidden="true"><Lock className="h-5 w-5" /></span>
+          <SettingsButton />
         </div>
         <div className="pin-head">
-          <span className="pin-lock" aria-hidden="true"><Lock className="h-6 w-6" /></span>
           <h1>{title}</h1>
           {intro && <p>{intro}</p>}
         </div>

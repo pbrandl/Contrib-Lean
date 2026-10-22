@@ -153,35 +153,19 @@
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
 
-  /* Top bar: logo left, name centered, "Abmelden" right. */
+  /* Header row of the member and admin pages: back, the name centered, settings. */
   .topbar {
     display: grid;
     grid-template-columns: 1fr minmax(0, max-content) 1fr;
     align-items: center;
     gap: 0.75rem;
-    min-height: 4.6rem;
+    min-height: 3.75rem;
+    margin-inline: -0.6rem;
   }
 
   .topbar-name {
     @apply min-w-0 truncate text-center font-semibold;
-    font-size: 0.9rem;
-  }
-
-  .topbar-end {
-    display: flex;
-    justify-self: end;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  /* Plain text, no padding or highlight, the same size as the name. */
-  .topbar-logout {
-    min-height: 2.75rem;
-    padding: 0;
-    font-size: 0.9rem;
-    font-weight: 500;
-    white-space: nowrap;
-    color: rgb(255 248 210 / 0.85);
+    font-size: 1rem;
   }
 
   /* Text button without padding, background or highlight: Netto/Brutto and "PIN ändern". */
@@ -602,7 +586,13 @@
   .pin-head {
     display: grid;
     gap: 0.4rem;
-    padding-top: 1rem;
+    padding-top: 0.5rem;
+  }
+
+  /* The lock sits in the top row, left of the gear, so the name moves up. */
+  .pin-top-lock {
+    @apply ml-auto grid h-9 w-9 place-items-center rounded-full text-white/90;
+    background: rgb(255 255 255 / 0.1);
   }
 
   .pin-lock {
@@ -817,8 +807,8 @@
     margin-top: 1.25rem;
   }
 
-  /* The gear on the dark blue: opens the settings page from every page. */
-  .settings-button {
+  /* Round icon buttons on the dark blue: back and the settings gear. */
+  .icon-button {
     @apply inline-grid shrink-0 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white;
     width: 2.75rem;
     height: 2.75rem;

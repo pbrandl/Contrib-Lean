@@ -106,3 +106,14 @@ test('export: Download on the left, the format on the right, remembered for next
   expect(screen.getByText(/Erlaubt: CSV, Excel \(XLSX\) oder JSON/)).toBeInTheDocument();
   clicked.mockRestore();
 });
+
+test('the browser\'s back button leaves the admin page to the admin PIN screen', async () => {
+  global.fetch = jest.fn(() => respond(state([])));
+  render(<AdminApp />);
+  expect(await screen.findByRole('button', { name: /Mitglieder/ })).toBeInTheDocument();
+  expect(window.history.state).toEqual({ admin: true });
+  window.history.back();
+  expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument();
+  expect(screen.getByText('Melde dich mit der Admin-PIN an.')).toBeInTheDocument();
+  expect(window.sessionStorage.getItem('franzwerk.admin')).toBeNull();
+});

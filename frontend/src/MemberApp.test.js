@@ -253,7 +253,7 @@ test('a save that ends after logging out changes nothing on the next page', asyn
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
   await screen.findByRole('button', { name: /Wird gespeichert/ });
   fireEvent.keyDown(document, { key: 'Escape' });
-  fireEvent.click(screen.getByRole('button', { name: 'Abmelden' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Abmelden' })); // the back arrow
   expect(await screen.findByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
   await act(async () => { release(); });
   await act(async () => { await new Promise(r => setTimeout(r, 50)); });
@@ -278,4 +278,15 @@ test('while the server is stopped the maintenance page shows and goes back to th
   expect(await screen.findByTestId('own-amount')).toHaveTextContent('1.585');
   expect(screen.queryByRole('heading', { name: 'Gleich wieder da' })).not.toBeInTheDocument();
   jest.useRealTimers();
+});
+
+test('the back arrow and the browser\'s back button both leave the member page', async () => {
+  server();
+  render(<MemberApp />);
+  expect(await screen.findByTestId('own-amount')).toBeInTheDocument();
+  expect(screen.getByText('Anna')).toBeInTheDocument();
+  expect(window.history.state).toEqual({ member: true });
+  act(() => { window.history.back(); });
+  expect(await screen.findByRole('heading', { name: 'Wähle deinen Namen' })).toBeInTheDocument();
+  expect(window.localStorage.getItem('franzwerk.member')).toBeNull();
 });

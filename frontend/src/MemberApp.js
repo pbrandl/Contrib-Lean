@@ -381,6 +381,13 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     }
   }, [sheet, token, mode, apply, closeSheet, load, onLogout, showNotice, t]);
 
+  // The back arrow does what the browser's back button does: its popstate logs out. Right
+  // after closing the sheet its own back step is still on the way; then log out directly.
+  const leave = () => {
+    if (isMemberEntry() && !pendingBack.current) window.history.back();
+    else onLogout();
+  };
+
   // An open sheet stays, so nothing typed is lost; saving then shows the maintenance message.
   if (loadError === 'maintenance' && !sheet) return <MaintenancePage onRetry={load} />;
   if (!me) return loadError ? <OfflinePage onRetry={load} /> : <LoadingPage />;
@@ -404,7 +411,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
       {/* inert: behind the open sheet nothing can be reached with the keyboard. */}
       <div inert={sheet ? true : undefined}>
         <Band className="pb-[3.9rem]">
-          <TopBar label={me.user.name} onLogout={() => onLogout()} />
+          <TopBar label={me.user.name} onBack={leave} />
           <Progress total={me.totalRaised} totalGross={totalGross(me)} target={me.targetAmount} count={me.contributorCount} hours={me.totalHours} mode={mode} />
         </Band>
 
