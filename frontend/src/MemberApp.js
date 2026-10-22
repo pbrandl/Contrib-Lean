@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useNotice, usePolling } from './lib';
 import { DEMO } from './demo';
 import { useAmountMode, useT } from './settings';
-import { Band, LoadingPage, Logo, MaintenancePage, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
+import { BackButton, Band, LoadingPage, Logo, MaintenancePage, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -126,7 +126,7 @@ function FrontPage({ onLogin }) {
         title={selected.name}
         intro={t('front.pinIntro')}
         onSubmit={login}
-        back={<button type="button" onClick={back} className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> {t('front.otherName')}</button>}
+        back={<BackButton label={t('front.otherName')} onClick={back} className="-ml-2.5" />}
       >
         {t('front.pinForgotten')}
       </PinLogin>

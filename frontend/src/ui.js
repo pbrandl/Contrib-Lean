@@ -40,15 +40,21 @@ export function SettingsButton({ className = '' }) {
   );
 }
 
+// The back arrow of the header rows: a button, or a link with `href`; `label` is for screen readers.
+export function BackButton({ label, onClick, href, className = '' }) {
+  const icon = <ChevronLeft className="h-7 w-7" aria-hidden="true" />;
+  return href
+    ? <a href={href} className={`icon-button ${className}`} aria-label={label}>{icon}</a>
+    : <button type="button" onClick={onClick} className={`icon-button ${className}`} aria-label={label}>{icon}</button>;
+}
+
 // Header row of the member and admin pages: back on the left (leaves the page and logs
 // out, like the browser's back button), the name in the middle, the settings on the right.
 export function TopBar({ label, onBack }) {
   const t = useT();
   return (
     <div className="topbar">
-      <button type="button" onClick={onBack} className="icon-button justify-self-start" aria-label={t('common.logout')}>
-        <ChevronLeft className="h-7 w-7" aria-hidden="true" />
-      </button>
+      <BackButton label={t('common.logout')} onClick={onBack} className="justify-self-start" />
       <span className="topbar-name">{label}</span>
       <SettingsButton className="justify-self-end" />
     </div>
@@ -148,7 +154,7 @@ export function PinInput({ id, value, onChange, label, autoFocus = false }) {
 // it: the digit shows briefly, then turns into a dot (the length is not known, so the
 // boxes start left and grow to the right, up to PIN_MAX). Touch devices get the page's own
 // keypad; on computers a hidden field takes the keys. `onSubmit` returns a promise; its
-// error message is shown below the boxes. `back`: a link or button above the title.
+// error message is shown below the boxes. `back`: a BackButton in the top row.
 export const PIN_MAX = 8;
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
 const REVEAL_MS = 700;
@@ -211,11 +217,13 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
       <div className="pin-inner">
         <div className="pin-top">
           {back}
-          <span className="pin-top-lock" aria-hidden="true"><Lock className="h-5 w-5" /></span>
-          <SettingsButton />
+          <SettingsButton className="ml-auto" />
         </div>
         <div className="pin-head">
-          <h1>{title}</h1>
+          <div className="pin-title">
+            <span className="pin-lock-small" aria-hidden="true"><Lock className="h-5 w-5" /></span>
+            <h1>{title}</h1>
+          </div>
           {intro && <p>{intro}</p>}
         </div>
 

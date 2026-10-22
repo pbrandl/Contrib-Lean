@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronLeft, Download, Pencil, Search, Upload, X } from 'lucide-react';
+import { ChevronDown, Download, Pencil, Search, Upload, X } from 'lucide-react';
 import { adminSession, api, byName, deviceId, download, fold, formatEuro, isNewer, isPin, loginWithPin, parseAmount, rememberTrust, today, totalGross, useNotice, usePolling } from './lib';
 import { EXPORT_FORMATS, IMPORT_ACCEPT, readImportFile } from './files';
 import { useAmountMode, useT } from './settings';
-import { Band, BusyButton, Callout, LoadingPage, MaintenancePage, Notice, OfflinePage, PinChange, PinInput, PinLogin, Progress, TopBar } from './ui';
+import { BackButton, Band, BusyButton, Callout, LoadingPage, MaintenancePage, Notice, OfflinePage, PinChange, PinInput, PinLogin, Progress, TopBar } from './ui';
 
 // Like the member page: the admin page has its own history entry, so the browser's back
 // button (and the back arrow) leaves it and logs out, back to the admin PIN screen.
@@ -56,7 +56,7 @@ function AdminLogin({ onLogin }) {
       title={t('admin.title')}
       intro={t('admin.loginIntro')}
       onSubmit={login}
-      back={<a href="/" className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> {t('admin.toStart')}</a>}
+      back={<BackButton label={t('admin.toStart')} href="/" className="-ml-2.5" />}
     />
   );
 }

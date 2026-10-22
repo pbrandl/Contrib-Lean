@@ -247,7 +247,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 
 ### PIN entry (member PIN step and admin login, `PinLogin` in `ui.js`)
 
-- A screen of its own in the dark blue, white only (no yellow). The top row holds the back link left and, right, a small lock icon next to the settings gear (since 2.0.0; it used to sit above the name and took space).
+- A screen of its own in the dark blue, white only (no yellow). The top row holds only the back arrow (`BackButton`, icon without text; screen readers hear "Anderer Name" or "Zur Startseite") and the settings gear, like the header rows of the member and admin pages. The lock sits in a round light circle (white at 20 % with a 30 % edge, so it stands out on the blue) in front of the name, on the same line (since 2.0.0; it used to sit above the name and took space).
 - One box per digit, left-aligned, up to 8. A box appears together with its digit (since 2.0.0; there is no empty box, so none stays open at the end, and before the first digit an invisible box keeps the row's height). Every digit shows briefly (0.7 s), then turns into a round dot. The box of the newest digit has a white edge that is highlighted outward once, in one smooth movement, when it appears.
 - Touch devices get the page's own keypad (digits, backspace); on computers a visually hidden field (`#pin`, label "PIN") takes the keys, Enter logs in. "Anmelden" is enabled from 4 digits.
 - PINs have 4 to 8 digits (server, app, CSV import and mail script).
