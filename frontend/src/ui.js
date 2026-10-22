@@ -10,7 +10,8 @@ export function Logo({ className }) {
   // The demo carries no organisation's logo.
   if (DEMO) {
     return (
-      <span className={`demo-wordmark ${className || ''}`} role="img" aria-label="Demo">
+      // its own height: the size classes are meant for the picture
+      <span className={`demo-wordmark ${(className || '').replace(/(^|\s)(sm:)?h-\S+/g, ' ')}`} role="img" aria-label="Demo">
         {t('app.name')}<span>Demo</span>
       </span>
     );

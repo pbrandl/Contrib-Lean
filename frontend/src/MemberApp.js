@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useNotice, usePolling } from './lib';
+import { DEMO } from './demo';
 import { useAmountMode, useT } from './settings';
 import { Band, LoadingPage, Logo, MaintenancePage, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
@@ -136,8 +137,11 @@ function FrontPage({ onLogin }) {
     <>
       {!selected && (
         <Band className="pb-[3.9rem] pt-6">
-          <SettingsButton className="absolute right-3 top-3" />
-          <Logo className="h-28 w-auto sm:h-32" />
+          {/* The gear in one row with the logo, level with its top line ("Bietrunde" in the demo). */}
+          <div className="flex items-start justify-between gap-3">
+            <Logo className="h-28 w-auto sm:h-32" />
+            <SettingsButton className={`-mr-2.5 ${DEMO ? '-mt-2.5' : ''}`} />
+          </div>
           <div className="mt-5">
             <Progress total={data.totalRaised} totalGross={totalGross(data)} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} note={t(`progress.note.${mode}`)} />
           </div>
