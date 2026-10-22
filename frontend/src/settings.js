@@ -92,10 +92,5 @@ export function useSettings() {
 // The translation function; components that use it show the new language right away.
 export const useT = () => useSettings().t;
 
-// Netto or brutto, from the settings, and a toggle for the quick switch on the pages.
-export function useAmountMode() {
-  const { settings, set } = useSettings();
-  const mode = settings.amounts;
-  const toggle = useCallback(() => set('amounts', mode === 'brutto' ? 'netto' : 'brutto'), [mode, set]);
-  return [mode, toggle];
-}
+// Netto or brutto, from the settings.
+export const useAmountMode = () => useSettings().settings.amounts;

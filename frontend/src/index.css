@@ -16,7 +16,7 @@
     --c-blau: 64 107 143;
     --c-blau-hell: 238 243 247;
     --c-blau-hover: 225 234 241;
-    --c-papier: 245 247 249;
+    --c-papier: 235 240 244;
     --c-tinte: 20 35 47;
     --c-ziegel: 166 58 40;
     --c-gruen: 35 119 74;
@@ -27,11 +27,11 @@
   .dark {
     --c-gelb-hell: 58 52 24;
     --c-blau: 128 170 205;
-    --c-blau-hell: 33 51 67;
-    --c-blau-hover: 41 63 83;
-    --c-papier: 13 21 28;
+    --c-blau-hell: 38 59 77;
+    --c-blau-hover: 47 72 94;
+    --c-papier: 10 17 23;
     --c-tinte: 228 235 241;
-    --c-flaeche: 23 35 46;
+    --c-flaeche: 28 43 57;
     --c-akzent: 163 199 228;
   }
 
@@ -121,7 +121,7 @@
   }
 
   .card {
-    @apply rounded-2xl bg-flaeche shadow-card;
+    @apply rounded-2xl bg-flaeche shadow-card ring-1 ring-tinte/[0.07];
   }
 
   .btn {
@@ -850,38 +850,52 @@
     min-height: 4rem;
   }
 
-  /* Options side by side, one of them chosen; a radio group underneath. */
-  .segmented {
-    display: grid;
-    grid-template-columns: repeat(var(--options), minmax(0, 1fr));
-    gap: 0.25rem;
-    padding: 0.25rem;
-    border-radius: 0.9rem;
-    background: rgb(var(--c-tinte) / 0.06);
+  /* Settings: one row per setting, the options as plain text; the chosen one is dark and
+     underlined. Radio inputs underneath, so keyboard and screen readers work as usual. */
+  .setting {
+    margin: 0;
+    padding: 1.1rem 0 1rem;
+    border: 0;
+    min-width: 0;
   }
 
-  .segment {
-    @apply flex cursor-pointer items-center justify-center gap-2 rounded-xl px-2 text-center text-[0.95rem] font-semibold text-tinte/75 transition-colors;
-    min-height: 2.9rem;
+  .setting-label {
+    @apply float-left w-full p-0 font-display text-lg font-bold;
   }
 
-  .segment:hover {
+  .choices {
+    @apply clear-both flex flex-wrap;
+    column-gap: 1.6rem;
+    padding-top: 0.35rem;
+  }
+
+  .choice {
+    @apply cursor-pointer font-semibold text-tinte/50 transition-colors;
+    padding-block: 0.45rem;
+    font-size: 1.05rem;
+    text-decoration-line: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.45rem;
+  }
+
+  .choice:hover {
+    @apply text-tinte/80;
+  }
+
+  .choice:has(:checked) {
     @apply text-tinte;
+    text-decoration-color: rgb(var(--c-akzent));
   }
 
-  .segment:has(:checked) {
-    @apply bg-werkblau text-white shadow-sm;
-  }
-
-  /* On the dark page the dark blue would hardly stand out: the chosen option turns light. */
-  .dark .segment:has(:checked) {
-    background: rgb(var(--c-blau));
-    color: rgb(var(--c-papier));
-  }
-
-  .segment:has(:focus-visible) {
+  .choice:has(:focus-visible) {
     outline: 3px solid rgb(var(--c-blau));
     outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  .setting-hint {
+    @apply mt-1 text-[0.875rem] text-tinte/60;
   }
 
   /* Admin member list: the whole row opens the editor. */
@@ -990,7 +1004,7 @@
 
   /* Admin: the member list folds away behind this header. */
   .collapse-head {
-    @apply flex w-full items-center gap-3 rounded-2xl bg-flaeche text-left text-tinte shadow-card;
+    @apply flex w-full items-center gap-3 rounded-2xl bg-flaeche text-left text-tinte shadow-card ring-1 ring-tinte/[0.07];
     padding: 1rem 1.1rem;
   }
 

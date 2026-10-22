@@ -48,8 +48,8 @@ const de = {
     version: 'Bietrunde {version}',
     theme: {
       label: 'Darstellung',
-      hint: 'Hell, dunkel oder Auto: so, wie dein Gerät eingestellt ist.',
-      system: 'Auto',
+      hint: 'System folgt der Einstellung deines Geräts.',
+      system: 'System',
       light: 'Hell',
       dark: 'Dunkel'
     },
@@ -63,11 +63,6 @@ const de = {
       netto: 'Netto',
       brutto: 'Brutto'
     }
-  },
-  amounts: {
-    netto: 'netto',
-    brutto: 'brutto',
-    toggle: 'Beträge {mode}, auf {other} umschalten'
   },
   progress: {
     of: 'von {amount}',

@@ -54,17 +54,6 @@ export function TopBar({ label, onLogout }) {
   );
 }
 
-// Netto/brutto: a plain grey text button that shows the current mode and switches it.
-export function ModeToggle({ mode, onToggle }) {
-  const t = useT();
-  const other = mode === 'brutto' ? 'netto' : 'brutto';
-  return (
-    <button type="button" className="text-button" onClick={onToggle} aria-label={t('amounts.toggle', { mode: t(`amounts.${mode}`), other: t(`amounts.${other}`) })}>
-      {t(`settings.amounts.${mode}`)}
-    </button>
-  );
-}
-
 // Total raised against the need, and the hours per month everybody offers. The euros are
 // shown whole, in the page's netto/brutto mode; `note` follows the Bedarf (" netto").
 // `totalGross`: the brutto total from the server, with bids typed brutto as typed.

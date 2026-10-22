@@ -1,9 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Monitor, Moon, Sun, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { SETTINGS, settingLabel, useSettings } from './settings';
 import { VERSION } from './version';
-
-const ICONS = { theme: { system: Monitor, light: Sun, dark: Moon } };
 
 // The settings page over every other page. It has its own history entry, so the back
 // gesture closes it; the page below keeps its state.
@@ -50,37 +48,31 @@ export default function SettingsPage() {
           <h1 id="settings-title" className="font-display text-[1.3rem] font-bold tracking-tight">{t('settings.title')}</h1>
         </div>
       </header>
-      <main className="wrap space-y-3 py-5">
-        {SETTINGS.map(setting => {
-          const icons = ICONS[setting.key];
-          return (
-            <fieldset key={setting.key} className="card p-4">
-              <legend className="sr-only">{t(`settings.${setting.key}.label`)}</legend>
-              <p className="font-display text-lg font-bold" aria-hidden="true">{t(`settings.${setting.key}.label`)}</p>
-              <p className="mt-0.5 text-[0.9rem] text-tinte/70">{t(`settings.${setting.key}.hint`)}</p>
-              <div className="segmented mt-3" style={{ '--options': setting.options.length }}>
-                {setting.options.map(option => {
-                  const Icon = icons && icons[option];
-                  return (
-                    <label key={option} className="segment">
-                      <input
-                        type="radio"
-                        name={`setting-${setting.key}`}
-                        value={option}
-                        checked={settings[setting.key] === option}
-                        onChange={() => set(setting.key, option)}
-                        className="sr-only"
-                      />
-                      {Icon && <Icon className="h-5 w-5" aria-hidden="true" />}
-                      <span lang={setting.key === 'language' ? option : undefined}>{settingLabel(setting, option)}</span>
-                    </label>
-                  );
-                })}
+      <main className="wrap py-5">
+        <div className="card divide-y divide-tinte/10 px-4">
+          {SETTINGS.map(setting => (
+            <fieldset key={setting.key} className="setting">
+              <legend className="setting-label">{t(`settings.${setting.key}.label`)}</legend>
+              <div className="choices">
+                {setting.options.map(option => (
+                  <label key={option} className="choice">
+                    <input
+                      type="radio"
+                      name={`setting-${setting.key}`}
+                      value={option}
+                      checked={settings[setting.key] === option}
+                      onChange={() => set(setting.key, option)}
+                      className="sr-only"
+                    />
+                    <span lang={setting.key === 'language' ? option : undefined}>{settingLabel(setting, option)}</span>
+                  </label>
+                ))}
               </div>
+              <p className="setting-hint">{t(`settings.${setting.key}.hint`)}</p>
             </fieldset>
-          );
-        })}
-        <p className="pt-2 text-center text-sm text-tinte/55">{t('settings.version', { version: VERSION })}</p>
+          ))}
+        </div>
+        <p className="pt-5 text-center text-sm text-tinte/55">{t('settings.version', { version: VERSION })}</p>
       </main>
     </div>
   );

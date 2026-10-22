@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useNotice, usePolling } from './lib';
 import { useAmountMode, useT } from './settings';
-import { Band, LoadingPage, Logo, MaintenancePage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
+import { Band, LoadingPage, Logo, MaintenancePage, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -50,7 +50,7 @@ export default function MemberApp() {
 
 function FrontPage({ onLogin }) {
   const t = useT();
-  const [mode] = useAmountMode();
+  const mode = useAmountMode();
   const [state, setState] = useState({ status: 'loading' });
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -233,7 +233,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
   const { token } = session;
   const [me, setMe] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [mode, toggleMode] = useAmountMode();
+  const mode = useAmountMode();
   const [sheet, setSheet] = useState(null);
   // The sheet whose value is being saved. It can be closed before the answer comes.
   const [saving, setSaving] = useState(null);
@@ -412,7 +412,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
           <section aria-labelledby="bid-heading" className="card p-4">
             <div className="flex flex-wrap items-center justify-between gap-x-3">
               <h1 id="bid-heading" className="font-display text-2xl font-bold tracking-tight">{t('member.title')}</h1>
-              <ModeToggle mode={mode} onToggle={toggleMode} />
+              <span className="text-[0.85rem] font-medium text-tinte/55">{t(`settings.amounts.${mode}`)}</span>
             </div>
 
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

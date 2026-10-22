@@ -48,8 +48,8 @@ const en = {
     version: 'Pledge round {version}',
     theme: {
       label: 'Appearance',
-      hint: 'Light, dark or Auto: the same as your device.',
-      system: 'Auto',
+      hint: 'System follows the setting of your device.',
+      system: 'System',
       light: 'Light',
       dark: 'Dark'
     },
@@ -63,11 +63,6 @@ const en = {
       netto: 'Net',
       brutto: 'Gross'
     }
-  },
-  amounts: {
-    netto: 'net',
-    brutto: 'gross',
-    toggle: 'Amounts {mode}, switch to {other}'
   },
   progress: {
     of: 'of {amount}',

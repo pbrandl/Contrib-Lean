@@ -48,8 +48,8 @@ const es = {
     version: 'Ronda de ofertas {version}',
     theme: {
       label: 'Apariencia',
-      hint: 'Clara, oscura o Auto: como esté configurado tu dispositivo.',
-      system: 'Auto',
+      hint: 'Sistema sigue el ajuste de tu dispositivo.',
+      system: 'Sistema',
       light: 'Clara',
       dark: 'Oscura'
     },
@@ -63,11 +63,6 @@ const es = {
       netto: 'Neto',
       brutto: 'Bruto'
     }
-  },
-  amounts: {
-    netto: 'neto',
-    brutto: 'bruto',
-    toggle: 'Importes en {mode}, cambiar a {other}'
   },
   progress: {
     of: 'de {amount}',

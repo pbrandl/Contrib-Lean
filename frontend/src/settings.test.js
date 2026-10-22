@@ -46,7 +46,7 @@ test('without saved settings: the browser language, the device theme and the net
   expect(document.documentElement).toHaveClass('dark');
   fireEvent.click(screen.getByRole('button', { name: 'Ajustes' }));
   expect(screen.getByRole('radio', { name: 'Bruto' })).toBeChecked();
-  expect(screen.getByRole('radio', { name: /Auto/ })).toBeChecked();
+  expect(screen.getByRole('radio', { name: 'Sistema' })).toBeChecked();
   Object.defineProperty(window.navigator, 'languages', { value: ['de-DE', 'de'], configurable: true });
   delete window.matchMedia;
 });

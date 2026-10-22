@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from './test-utils';
 import MemberApp from './MemberApp';
 import { toGross, toNet } from './lib';
@@ -97,9 +97,16 @@ test('desktop: the text field starts with the bid, previews the total and saves 
 test('brutto mode shows brutto everywhere, and a brutto input is sent as brutto and shown exactly as typed', async () => {
   server();
   render(<MemberApp />);
-  fireEvent.click(await screen.findByRole('button', { name: /Beträge netto/ }));
-  expect(screen.getByRole('button', { name: /Beträge brutto/ })).toHaveTextContent('Brutto');
+  expect(await screen.findByTestId('own-amount')).toHaveTextContent('1.585');
+  expect(screen.getByText('Netto')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /netto|brutto/i })).not.toBeInTheDocument();
+  // Netto or brutto is chosen on the settings page.
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Brutto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen schließen' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Einstellungen' })).not.toBeInTheDocument());
   expect(JSON.parse(window.localStorage.getItem('franzwerk.settings')).amounts).toBe('brutto');
+  expect(screen.getByText('Brutto')).toBeInTheDocument();
   expect(screen.getByTestId('own-amount')).toHaveTextContent('1.886,15');
   expect(screen.getByText('von 28.560 €')).toBeInTheDocument();
 
@@ -124,7 +131,8 @@ test('brutto mode shows brutto everywhere, and a brutto input is sent as brutto 
   expect(puts()).toEqual([['/api/me/contribution', { gross: 12.94 }], ['/api/me/contribution', { gross: 10 }]]);
 
   // Back in netto mode the netto amount shows, rounded up from 10 € brutto.
-  fireEvent.click(screen.getByRole('button', { name: /Beträge brutto/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Netto' }));
   expect(screen.getByTestId('own-amount')).toHaveTextContent('8,41');
 });
 

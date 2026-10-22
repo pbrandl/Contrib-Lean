@@ -62,7 +62,7 @@ function AdminPage({ session, onSession, onLogout, showNotice }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [adminPinOpen, setAdminPinOpen] = useState(false);
-  const [mode] = useAmountMode();
+  const mode = useAmountMode();
 
   const apply = useCallback((next) => {
     setData(prev => (isNewer(next, prev) ? next : prev));

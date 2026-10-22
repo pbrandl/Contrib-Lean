@@ -114,14 +114,15 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 - `i18n/index.js`: `LANGUAGES` (code, name, `Intl` locale, messages), `t(key, params)` with `{placeholders}` and `{ one, other }` plurals (via `Intl.PluralRules`), fallback to German. A new language: copy `de.js`, translate, add one line; `i18n.test.js` checks that every language has the same keys and placeholders as German. Number formats follow the language (`locale()` in `lib.js`); typing amounts too (`decimalSign`/`groupSign`, `fromField`, `isDecimalKey` in `entry.js`: in English only "." is decimal).
 - `settings.js`: `SETTINGS` describes the per-device settings (`theme`: system/light/dark, `language`, `amounts`: netto/brutto) with their initial values (browser language, the version-1 `franzwerk.mode`); stored in `franzwerk.settings`. `SettingsProvider` (in `App.js`) applies the theme (class `dark` on `<html>`, following the device for `system`) and the language; `useT()` gives `t` and re-renders on a language change, `useAmountMode()` replaces the old per-page mode. A new setting: one entry in `SETTINGS` plus texts `settings.<key>.label/.hint/.<option>`; `SettingsPage.js` renders it.
+- The settings page shows one card with a row per setting; the options are plain text (the chosen one dark and underlined in `akzent`), radio inputs underneath. No segmented buttons: the owner finds them ugly.
 - The settings page lies over every page (`Shell` in `App.js`, the page below is `inert` and keeps its state) and has its own history entry; `SettingsButton` (gear) sits in the top bar, the front page header, the PIN screen, the status screens and the offline page. `FrontPage`'s popstate handler keeps the PIN step when only the settings entry is popped.
-- Dark mode: the palette in `tailwind.config.js` reads CSS variables (`--c-*`, RGB channels) defined in `index.css` for `:root` and `.dark`. Use the palette (`bg-flaeche` for cards and fields instead of `bg-white`, `text-akzent` for brand-blue text on light surfaces, `text-tinte`, `bg-papier`) and new components follow the theme by themselves. The dark blue screens (PIN, sheet, status) and the header look the same in both.
+- Dark mode: the palette in `tailwind.config.js` reads CSS variables (`--c-*`, RGB channels) defined in `index.css` for `:root` and `.dark`. Cards stand off the page with a 1 px `ring-tinte/[0.07]` and `shadow-card`; keep that contrast (the owner asked for it). Use the palette (`bg-flaeche` for cards and fields instead of `bg-white`, `text-akzent` for brand-blue text on light surfaces, `text-tinte`, `bg-papier`) and new components follow the theme by themselves. The dark blue screens (PIN, sheet, status) and the header look the same in both.
 - Tests render pages with `render` from `src/test-utils.js` (inside `SettingsProvider`); `setupTests.js` makes the browser ask for German and resets the settings before every test.
 
 ### Frontend structure
 
 - `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter`, `timeout` and `code`, the message already translated by `errorMessage`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, formatting in the page's language (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
-- `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
+- `ui.js`: shared components (`Band` header, `TopBar`, `SettingsButton`, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
 - **Every button that waits for the server is a `BusyButton`** (`busy`, `busyLabel` for screen readers, `disabled` only for "not possible yet"). While busy it looks the same and ignores clicks; after 0.2 s (`useDelayed`) a spinner replaces its content and the button keeps its width. No "Wird … …" texts on buttons.
 - `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview. `usesKeypad()` in `lib.js` picks the keypad (`pointer: coarse`) or the keyboard, for the sheet and the PIN entry.
 - Admin member list: a tap on a row opens `MemberEditor` (name, new PIN, delete behind a question); it saves with `PATCH /api/admin/users/:id { name?, pin? }`, one write and audit line(s) `user_renamed`/`pin_changed`. The old `PUT .../pin` stays for the admin's own PIN.
@@ -181,7 +182,7 @@ Deferred or not wanted:
 
 Implemented in 1.0.0 (`AmountSheet.js`, `entry.js`, `MemberPage`, `PinLogin`, `AdminApp`). This section is the spec: change the app and this text together.
 
-Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page with example data; open it in a browser. It was reviewed on a phone, and its layout and its `pressKey`, `sanitize`, `evaluate` and `toNet` functions are the agreed behavior. The FRANZ!werk logo is left out of it on purpose; the app keeps its logo.
+The design prototype the bid entry was built from (`docs/gebotseingabe-entwurf.html`) was removed in 2.0.0: the demo build shows the whole app.
 
 ### Amounts
 
@@ -209,19 +210,17 @@ Reference prototype: `docs/gebotseingabe-entwurf.html`. It is a standalone page 
   - "Abmelden" and the total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
   - Outside the page (overscroll, the phone's safe areas) the light page colour continues below the content, never a blue strip at the bottom. Android and desktop browsers show blue above the page; iOS paints both edges in one colour (the body's), so there the top is light too. That is accepted: a blue body would bring back the blue strip at the bottom.
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
-  - Heading left, netto/brutto toggle right on the same line.
+  - Heading left; right on the same line the current mode as plain grey text ("Netto"/"Brutto"), not a button (2.0.0).
   - Below it: own bid (€) left and own hours (h) right, in the same font size and without labels.
   - Below that: two equal buttons "Beitrag ändern" (left) and "Stunden ändern" (right), both light blue (`blau-hell`), not yellow, text only without icons.
-- **Netto/brutto toggle:**
-  - A plain text button that shows the current mode ("Netto"/"Brutto"), slightly smaller than body text and grey.
-  - No padding (the text ends flush with the card edge), no background, no hover highlight.
-  - It switches every amount on the member page, including the keypad sheet. The sheet has no toggle of its own: what the member types counts in the mode set on the member page.
+- **Netto/brutto** (since 2.0.0 only on the settings page, setting `amounts`):
+  - It switches every amount on every page, including the keypad sheet; what the member types counts in that mode.
   - The choice is stored per device; default is netto.
-  - There are no other "netto"/"brutto" labels on the member page.
+  - On the member page the card heading shows the mode as plain grey text; there are no other "netto"/"brutto" labels there.
 - **What goes away:**
-  - The old PIN card and the start-PIN hint ("Du nutzt noch die Start-PIN"): not needed, because every member has a random PIN. "PIN ändern" stays as a plain grey text button centered below the card, styled like the Netto toggle.
+  - The old PIN card and the start-PIN hint ("Du nutzt noch die Start-PIN"): not needed, because every member has a random PIN. "PIN ändern" stays as a plain grey text button centered below the card, grey like the mode label on the card.
   - The separate `HoursCard`. This replaces the old open items about the clipped hours field and the clipped header.
-- **Front page before login:** it has no toggle, so its header says "von X € netto".
+- **Front page before login:** its header says "von X € netto" (or "brutto", from the settings).
 
 ### Keypad sheet (touch devices, `pointer: coarse`, including tablets)
 

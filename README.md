@@ -2,12 +2,12 @@
 
 Version 2.0.0. Members open https://franz.uber.space, pick their name, log in with their PIN and set
 their bid (euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a
-keypad on phones and tablets, a text field on computers. A text button switches the display between
+keypad on phones and tablets, a text field on computers. The settings switch the display between
 netto and brutto (× 1.19); sums are always netto, and a bid typed brutto is kept exactly as typed.
 Admins manage members (a tap on a name changes name and PIN), the target ("Bedarf") and import/export
 (XLSX, CSV or JSON; the import recognises the type by itself) at https://franz.uber.space/admin.
 
-A gear on every page opens the settings of this device: light, dark or automatic appearance, the
+A gear on every page opens the settings of this device: light, dark or system appearance, the
 language (German, English, Spanish; the browser's language at first) and netto or brutto amounts.
 
 - `DEPLOY.md` (German): how to install a new version on the Uberspace, with the way back.
