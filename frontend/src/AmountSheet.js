@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronRight, X } from 'lucide-react';
-import { formatHours, formatWhole, inMode, ownGross, round2, toNet, totalGross } from './lib';
+import { decimalSign, formatHours, formatWhole, inMode, ownGross, round2, toNet, totalGross } from './lib';
+import { useT } from './settings';
 import { BusyButton } from './ui';
-import { KINDS, MAX_HOURS, formatRaw, fromText, pressKey, rawValue, sanitize, toRaw } from './entry';
+import { KINDS, MAX_HOURS, formatRaw, fromField, fromText, isDecimalKey, pressKey, rawValue, toRaw } from './entry';
 
 export { usesKeypad } from './lib';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', 'back'];
-const KEY_LABELS = { ',': 'Komma', back: 'Letzte Ziffer löschen' };
 const CURSOR_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -17,6 +17,7 @@ const round1 = (n) => Math.round(n * 10) / 10;
 // `busy`: this sheet's value is being saved. `waiting`: an earlier save (from a sheet that was
 // closed before the answer came) is still running, so this one cannot be saved yet.
 export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = false, onSave, onClose }) {
+  const t = useT();
   const k = KINDS[kind];
   const money = kind === 'money';
   const brutto = money && mode === 'brutto';
@@ -98,7 +99,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
       }
       let key = null;
       if (/^\d$/.test(e.key)) key = e.key;
-      else if (e.key === ',' || e.key === '.') key = ',';
+      else if (isDecimalKey(e.key)) key = ',';
       else if (e.key === 'Backspace') key = 'back';
       else if (e.key === 'Enter') {
         e.preventDefault();
@@ -131,7 +132,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (/^\d$/.test(e.key)) press(e.key);
-    else if (e.key === ',' || e.key === '.') press(',');
+    else if (isDecimalKey(e.key)) press(',');
     else if (e.key === 'Backspace') press('back');
     else if (e.key === 'Enter') save();
     else if (e.key.length !== 1 && !CURSOR_KEYS.includes(e.key)) return; // Tab, Esc and the like
@@ -146,7 +147,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
 
   // Anything else that changes the field (dictation, autofill, cut): keep what is valid.
   const onFieldChange = (e) => {
-    const text = sanitize(e.target.value.replace(/\./g, ''), kind);
+    const text = fromField(e.target.value, kind);
     if (!busy && !(kind === 'hours' && rawValue(text) > MAX_HOURS)) setRaw(text);
   };
 
@@ -169,7 +170,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
     // In brutto mode the total counts the typed brutto amounts as they are.
     const shownTotal = brutto ? (unchanged ? totalGross(me) : totalGross(me) - ownGross(me) + entered) : preview;
     total = `${formatWhole(shownTotal)}\u00a0€`;
-    of = `von ${formatWhole(inMode(me.targetAmount, mode))} €`;
+    of = t('progress.of', { amount: `${formatWhole(inMode(me.targetAmount, mode))}\u00a0€` });
     bars = (
       <div className="sheet-track" aria-hidden="true">
         <div className="sheet-fill" style={{ width: `${percent(Math.min(now, preview))}%` }} />
@@ -179,7 +180,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
   } else {
     const preview = unchanged ? me.totalHours : me.totalHours - me.hours + next;
     total = `${formatHours(round1(preview))} h`;
-    of = 'pro Monat';
+    of = t('progress.perMonth');
   }
 
   const text = value || '0';
@@ -189,10 +190,10 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
     <div className="sheet on-dark" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onMouseDown={onSheetMouseDown}>
       <div className={`sheet-inner${keypad ? ' with-keypad' : ''}`}>
         <div className="sheet-head flex items-center gap-1">
-          <button ref={closeRef} type="button" className="sheet-close" onClick={onClose} aria-label="Schließen, ohne zu speichern">
+          <button ref={closeRef} type="button" className="sheet-close" onClick={onClose} aria-label={t('sheet.close')}>
             <X className="h-6 w-6" aria-hidden="true" />
           </button>
-          <h2 id="sheet-title" className="font-display text-[1.3rem] font-bold tracking-tight">{k.title}</h2>
+          <h2 id="sheet-title" className="font-display text-[1.3rem] font-bold tracking-tight">{t(`sheet.${kind}.title`)}</h2>
         </div>
 
         <div className="sheet-sum">
@@ -219,7 +220,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="0"
-                  aria-label={k.label}
+                  aria-label={t(`sheet.${kind}.label`)}
                   value={value}
                   onChange={onFieldChange}
                   onKeyDown={onFieldKey}
@@ -243,17 +244,17 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
                 className={`key${pressed === key ? ' pressed' : ''}`}
                 onClick={() => press(key)}
                 disabled={key === ',' && raw.includes(',')}
-                aria-label={KEY_LABELS[key]}
+                aria-label={key === 'back' ? t('keypad.back') : key === ',' ? t('keypad.decimal') : undefined}
               >
-                {key === 'back' ? <ArrowLeft className="h-7 w-7" aria-hidden="true" /> : key}
+                {key === 'back' ? <ArrowLeft className="h-7 w-7" aria-hidden="true" /> : key === ',' ? decimalSign() : key}
               </button>
             ))}
           </div>
         )}
 
         <div className="sheet-foot flex items-center">
-          <BusyButton type="button" className="save" onClick={save} busy={busy} busyLabel="Wird gespeichert" disabled={unchanged || waiting}>
-            Speichern
+          <BusyButton type="button" className="save" onClick={save} busy={busy} busyLabel={t('busy.saving')} disabled={unchanged || waiting}>
+            {t('common.save')}
             <ChevronRight className="h-6 w-6" aria-hidden="true" />
           </BusyButton>
         </div>

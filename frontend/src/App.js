@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import AdminApp from './AdminApp';
 import MemberApp from './MemberApp';
 import { DEMO, DEMO_ADMIN_PIN, DEMO_PIN, resetDemo } from './demo';
+import { SettingsProvider, useSettings } from './settings';
+import SettingsPage from './SettingsPage';
 import { NotFoundPage } from './ui';
 
 // Apache serves index.html for /admin as well, and for every unknown address with
@@ -15,7 +17,27 @@ const pageOf = (path) => {
 };
 
 export default function App() {
-  if (DEMO) return <DemoApp />;
+  return (
+    <SettingsProvider>
+      <Shell />
+    </SettingsProvider>
+  );
+}
+
+// The settings page lies over the current page, which keeps its state below it.
+function Shell() {
+  const { open } = useSettings();
+  return (
+    <>
+      <div inert={open ? true : undefined}>
+        {DEMO ? <DemoApp /> : <Page />}
+      </div>
+      {open && <SettingsPage />}
+    </>
+  );
+}
+
+function Page() {
   const page = pageOf(window.location.pathname);
   if (page === 'admin') return <AdminApp />;
   if (page === 'unknown') return <NotFoundPage home={`${base}/`} />;
@@ -26,6 +48,7 @@ export default function App() {
 const demoView = () => (window.location.hash === '#admin' ? 'admin' : 'member');
 
 function DemoApp() {
+  const { t } = useSettings();
   const [view, setView] = useState(demoView);
   const [round, setRound] = useState(0);
 
@@ -51,14 +74,14 @@ function DemoApp() {
     <>
       <div className="demo-bar">
         <p>
-          <strong>Demo mit Beispieldaten.</strong>{' '}
-          {view === 'admin' ? <>Admin-PIN: <b>{DEMO_ADMIN_PIN}</b></> : <>PIN für alle Namen: <b>{DEMO_PIN}</b></>}
+          <strong>{t('demo.title')}</strong>{' '}
+          {view === 'admin' ? <>{t('demo.adminPin')} <b>{DEMO_ADMIN_PIN}</b></> : <>{t('demo.memberPin')} <b>{DEMO_PIN}</b></>}
         </p>
         <div className="demo-actions">
           <button type="button" onClick={() => show(view === 'admin' ? 'member' : 'admin')}>
-            {view === 'admin' ? 'Zur Mitgliederansicht' : 'Zur Admin-Ansicht'}
+            {view === 'admin' ? t('demo.toMembers') : t('demo.toAdmin')}
           </button>
-          <button type="button" onClick={reset}>Demo zurücksetzen</button>
+          <button type="button" onClick={reset}>{t('demo.reset')}</button>
         </div>
       </div>
       {view === 'admin' ? <AdminApp key={`a${round}`} /> : <MemberApp key={`m${round}`} />}

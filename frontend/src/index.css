@@ -6,6 +6,44 @@
 @tailwind utilities;
 
 @layer base {
+  /* The palette as RGB channels (tailwind.config.js reads them). Light, and dark below:
+     everything that uses these colours follows the theme. The dark blue screens (PIN, sheet,
+     maintenance) and the header stay as they are in both. */
+  :root {
+    --c-gelb: 245 220 81;
+    --c-gelb-hell: 255 248 210;
+    --c-werkblau: 31 59 82;
+    --c-blau: 64 107 143;
+    --c-blau-hell: 238 243 247;
+    --c-blau-hover: 225 234 241;
+    --c-papier: 245 247 249;
+    --c-tinte: 20 35 47;
+    --c-ziegel: 166 58 40;
+    --c-gruen: 35 119 74;
+    --c-flaeche: 255 255 255;
+    --c-akzent: 31 59 82;
+  }
+
+  .dark {
+    --c-gelb-hell: 58 52 24;
+    --c-blau: 128 170 205;
+    --c-blau-hell: 33 51 67;
+    --c-blau-hover: 41 63 83;
+    --c-papier: 13 21 28;
+    --c-tinte: 228 235 241;
+    --c-flaeche: 23 35 46;
+    --c-akzent: 163 199 228;
+  }
+
+  /* Text in ziegel red stays readable on the dark page; the banners keep the darker red. */
+  .dark .text-ziegel {
+    color: #F2937F;
+  }
+
+  .dark .border-ziegel\/30 {
+    border-color: rgb(242 147 127 / 0.35);
+  }
+
   /* Outside the page (rubber band, safe areas) the light page colour shows, never a blue
      strip below the content. Android and desktop browsers paint the top half blue; iOS uses
      one colour for both edges (the body's), so there the top shows the light colour too. */
@@ -83,7 +121,7 @@
   }
 
   .card {
-    @apply rounded-2xl bg-white shadow-card;
+    @apply rounded-2xl bg-flaeche shadow-card;
   }
 
   .btn {
@@ -95,7 +133,7 @@
   }
 
   .btn-rand {
-    @apply btn border border-tinte/15 bg-white text-tinte hover:border-tinte/30 hover:bg-blau-hell;
+    @apply btn border border-tinte/15 bg-flaeche text-tinte hover:border-tinte/30 hover:bg-blau-hell;
   }
 
   .btn-ziegel {
@@ -103,7 +141,7 @@
   }
 
   .field {
-    @apply block w-full rounded-xl border border-tinte/15 bg-white px-4 py-3 text-tinte shadow-sm transition placeholder:text-tinte/45 focus:border-blau focus:outline-none focus:ring-4 focus:ring-blau/15;
+    @apply block w-full rounded-xl border border-tinte/15 bg-flaeche px-4 py-3 text-tinte shadow-sm transition placeholder:text-tinte/45 focus:border-blau focus:outline-none focus:ring-4 focus:ring-blau/15;
   }
 
   /* Page width with the 16 px side gutter (more on phones with rounded corners). */
@@ -129,9 +167,15 @@
     font-size: 0.9rem;
   }
 
+  .topbar-end {
+    display: flex;
+    justify-self: end;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
   /* Plain text, no padding or highlight, the same size as the name. */
   .topbar-logout {
-    justify-self: end;
     min-height: 2.75rem;
     padding: 0;
     font-size: 0.9rem;
@@ -146,7 +190,7 @@
     padding: 0;
     font-size: 0.85rem;
     font-weight: 500;
-    color: rgb(20 35 47 / 0.62);
+    color: rgb(var(--c-tinte) / 0.62);
   }
 
   /* Header numbers: they wrap to a new line on narrow screens instead of being cut off. */
@@ -200,12 +244,12 @@
   .own-value .unit {
     font-size: 0.58em;
     margin-left: 0.15em;
-    color: rgb(20 35 47 / 0.55);
+    color: rgb(var(--c-tinte) / 0.55);
   }
 
   /* "Beitrag ändern" and "Stunden ändern" */
   .big-btn {
-    @apply flex select-none items-center justify-center bg-blau-hell text-center font-display font-bold text-werkblau hover:bg-[#E1EAF1];
+    @apply flex select-none items-center justify-center bg-blau-hell text-center font-display font-bold text-akzent hover:bg-[rgb(var(--c-blau-hover))];
     min-height: 3.75rem;
     padding: 0.6rem 0.5rem;
     border-radius: 1rem;
@@ -773,6 +817,118 @@
     margin-top: 1.25rem;
   }
 
+  /* The gear on the dark blue: opens the settings page from every page. */
+  .settings-button {
+    @apply inline-grid shrink-0 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .status-settings {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+  }
+
+  .status-screen {
+    position: relative;
+  }
+
+  /* Settings: over every page, in the page colours, so a new theme shows right away. */
+  .settings-page {
+    @apply fixed inset-0 z-30 overflow-y-auto bg-papier text-tinte;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .settings-head {
+    @apply sticky top-0 z-10 bg-werkblau text-white;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .settings-head > div {
+    min-height: 4rem;
+  }
+
+  /* Options side by side, one of them chosen; a radio group underneath. */
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(var(--options), minmax(0, 1fr));
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 0.9rem;
+    background: rgb(var(--c-tinte) / 0.06);
+  }
+
+  .segment {
+    @apply flex cursor-pointer items-center justify-center gap-2 rounded-xl px-2 text-center text-[0.95rem] font-semibold text-tinte/75 transition-colors;
+    min-height: 2.9rem;
+  }
+
+  .segment:hover {
+    @apply text-tinte;
+  }
+
+  .segment:has(:checked) {
+    @apply bg-werkblau text-white shadow-sm;
+  }
+
+  /* On the dark page the dark blue would hardly stand out: the chosen option turns light. */
+  .dark .segment:has(:checked) {
+    background: rgb(var(--c-blau));
+    color: rgb(var(--c-papier));
+  }
+
+  .segment:has(:focus-visible) {
+    outline: 3px solid rgb(var(--c-blau));
+    outline-offset: 2px;
+  }
+
+  /* Admin member list: the whole row opens the editor. */
+  .member-row {
+    @apply flex w-full items-center gap-3 py-3 text-left transition-colors hover:bg-blau-hell;
+    min-height: 3.5rem;
+    padding-inline: 0.5rem;
+    margin-inline: -0.5rem;
+    width: calc(100% + 1rem);
+    border-radius: 0.75rem;
+  }
+
+  .member-row[aria-expanded='true'] svg {
+    @apply text-akzent;
+  }
+
+  /* Download on the left, the format on the right, as one button. */
+  .split-button {
+    display: flex;
+    min-height: 3rem;
+  }
+
+  .split-main {
+    @apply btn flex-1 rounded-r-none bg-werkblau text-white hover:bg-[#2A4C68];
+  }
+
+  .split-pick {
+    @apply relative flex items-center rounded-r-xl bg-werkblau text-white;
+    border-left: 1px solid rgb(255 255 255 / 0.25);
+  }
+
+  .split-pick select {
+    @apply h-full cursor-pointer appearance-none rounded-r-xl bg-transparent pl-4 pr-10 font-semibold text-white;
+  }
+
+  .split-pick select option {
+    @apply bg-flaeche text-tinte;
+  }
+
+  .split-pick svg {
+    @apply pointer-events-none absolute right-3;
+  }
+
+  .split-pick:hover {
+    background: #2A4C68;
+  }
+
   .loading-page {
     @apply grid place-items-center bg-werkblau;
     min-height: 16rem;
@@ -834,7 +990,7 @@
 
   /* Admin: the member list folds away behind this header. */
   .collapse-head {
-    @apply flex w-full items-center gap-3 rounded-2xl bg-white text-left text-tinte shadow-card;
+    @apply flex w-full items-center gap-3 rounded-2xl bg-flaeche text-left text-tinte shadow-card;
     padding: 1rem 1.1rem;
   }
 

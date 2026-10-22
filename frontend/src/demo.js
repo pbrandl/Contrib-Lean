@@ -1,6 +1,6 @@
 // Demo mode (REACT_APP_DEMO=1): the whole backend runs in the browser with example data,
 // so the app can be shown without a server. Every visitor gets the same start data; what
-// they change stays in their own browser (localStorage) until "Demo zurücksetzen".
+// they change stays in their own browser (localStorage) until "reset demo".
 // It mirrors the routes and responses of backend/server.js that the frontend uses.
 
 export const DEMO = process.env.REACT_APP_DEMO === '1';
@@ -103,10 +103,13 @@ export function resetDemo() {
   }
 }
 
+// `code` and `params` as the server sends them, so lib.js translates the message.
 class DemoError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code, params) {
     super(message);
     this.status = status;
+    this.code = code;
+    this.params = params;
   }
 }
 
@@ -146,23 +149,25 @@ const adminView = (data) => ({
 
 const session = (user) => ({ token: `demo:${user.id}`, role: user.id === 'admin' ? 'admin' : 'member', user: { id: user.id, name: user.name } });
 
-function amount(value, label, max = 1000000) {
+// `field`: bid, amount, target or hours, as the server's error codes.
+function amount(value, field, max = 1000000) {
   const n = typeof value === 'string' ? Number(value.replace(',', '.')) : value;
   if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > max) {
-    throw new DemoError(400, `${label} muss eine Zahl zwischen 0 und ${max.toLocaleString('de-DE')} sein.`);
+    throw field === 'hours'
+      ? new DemoError(400, 'Die Stunden liegen nicht zwischen 0 und 744.', 'hours_range', { max })
+      : new DemoError(400, 'Ungültiger Betrag.', 'amount_range', { field, max });
   }
   return round2(n);
 }
 
 function pinOf(value) {
-  if (typeof value !== 'string' || !/^\d{4,8}$/.test(value)) throw new DemoError(400, 'Die PIN muss aus 4 bis 8 Ziffern bestehen.');
+  if (typeof value !== 'string' || !/^\d{4,8}$/.test(value)) throw new DemoError(400, 'Die PIN muss aus 4 bis 8 Ziffern bestehen.', 'pin_format');
   return value;
 }
 
 function nameOf(value) {
   const name = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
-  if (!name) throw new DemoError(400, 'Gib einen Namen ein.');
-  if (name.length > 60) throw new DemoError(400, 'Der Name darf höchstens 60 Zeichen lang sein.');
+  if (!name || name.length > 60) throw new DemoError(400, 'Ungültiger Name.', 'name_format', { max: 60 });
   return name;
 }
 
@@ -173,11 +178,11 @@ function handle(method, path, body, token) {
   const who = typeof token === 'string' && token.startsWith('demo:') ? token.slice(5) : null;
   const me = () => {
     const user = data.users.find(u => u.id === who);
-    if (!user || who === 'admin') throw new DemoError(401, 'Bitte melde dich neu an.');
+    if (!user || who === 'admin') throw new DemoError(401, 'Bitte melde dich neu an.', 'session_expired');
     return user;
   };
   const admin = () => {
-    if (who !== 'admin') throw new DemoError(401, 'Bitte melde dich neu an.');
+    if (who !== 'admin') throw new DemoError(401, 'Bitte melde dich neu an.', 'session_expired');
   };
   const route = `${method} ${path}`;
   let m;
@@ -188,19 +193,19 @@ function handle(method, path, body, token) {
   if (route === 'POST /login') {
     const { userId, pin } = body || {};
     if (userId === 'admin') {
-      if (pin !== DEMO_ADMIN_PIN) throw new DemoError(401, `PIN falsch. In der Demo ist die Admin-PIN ${DEMO_ADMIN_PIN}.`);
+      if (pin !== DEMO_ADMIN_PIN) throw new DemoError(401, 'PIN falsch.', 'demo_wrong_pin', { pin: DEMO_ADMIN_PIN });
       return session({ id: 'admin', name: 'Admin' });
     }
     const user = data.users.find(u => u.id === userId);
-    if (!user) throw new DemoError(404, 'Diesen Namen gibt es nicht mehr. Lade die Seite neu.');
-    if (pin !== user.pin) throw new DemoError(401, `PIN falsch. In der Demo ist die PIN ${DEMO_PIN}, wenn du keine eigene gesetzt hast.`);
+    if (!user) throw new DemoError(404, 'Diesen Namen gibt es nicht mehr.', 'name_gone');
+    if (pin !== user.pin) throw new DemoError(401, 'PIN falsch.', 'demo_wrong_pin_member', { pin: DEMO_PIN });
     return session(user);
   }
   if (route === 'GET /me') return memberView(data, me());
   if (route === 'PUT /me/contribution') {
     const user = me();
-    const gross = body && body.gross !== undefined ? amount(body.gross, 'Der Beitrag') : 0;
-    const net = body && body.gross !== undefined ? toNet(gross) : amount(body && body.amount, 'Der Beitrag');
+    const gross = body && body.gross !== undefined ? amount(body.gross, 'bid') : 0;
+    const net = body && body.gross !== undefined ? toNet(gross) : amount(body && body.amount, 'bid');
     if (net > 0) data.contributions[user.id] = net;
     else delete data.contributions[user.id];
     if (net > 0 && gross > 0) data.grossBids[user.id] = gross;
@@ -210,7 +215,7 @@ function handle(method, path, body, token) {
   }
   if (route === 'PUT /me/hours') {
     const user = me();
-    const hours = Math.round(amount(body && body.hours, 'Die Stunden', 744) * 10) / 10;
+    const hours = Math.round(amount(body && body.hours, 'hours', 744) * 10) / 10;
     if (hours > 0) data.hours[user.id] = hours;
     else delete data.hours[user.id];
     save(data);
@@ -230,7 +235,7 @@ function handle(method, path, body, token) {
   if (route === 'POST /admin/users') {
     admin();
     const name = nameOf(body && body.name);
-    if (data.users.some(u => sameName(u.name, name))) throw new DemoError(409, `„${name}“ ist schon eingetragen.`);
+    if (data.users.some(u => sameName(u.name, name))) throw new DemoError(409, 'Schon eingetragen.', 'name_taken', { name });
     const startPin = String(1000 + Math.floor(Math.random() * 9000)).replace(/^(1234)$/, '4821');
     const user = { id: `demo${Date.now().toString(36)}`, name, pin: startPin, defaultPin: true };
     data.users.push(user);
@@ -243,16 +248,33 @@ function handle(method, path, body, token) {
     const pin = pinOf(body && body.pin);
     if (id === 'admin') return { ...adminView(data), session: session({ id: 'admin', name: 'Admin' }) };
     const user = data.users.find(u => u.id === id);
-    if (!user) throw new DemoError(404, 'Dieses Mitglied gibt es nicht mehr.');
+    if (!user) throw new DemoError(404, 'Dieses Mitglied gibt es nicht mehr.', 'member_gone');
     user.pin = pin;
     user.defaultPin = false;
+    save(data);
+    return adminView(data);
+  }
+  if ((m = route.match(/^PATCH \/admin\/users\/([^/]+)$/))) {
+    admin();
+    const id = decodeURIComponent(m[1]);
+    const user = data.users.find(u => u.id === id);
+    if (!user) throw new DemoError(404, 'Dieses Mitglied gibt es nicht mehr.', 'member_gone');
+    if (body && body.name !== undefined) {
+      const name = nameOf(body.name);
+      if (data.users.some(u => u.id !== id && sameName(u.name, name))) throw new DemoError(409, 'Schon eingetragen.', 'name_taken', { name });
+      user.name = name;
+    }
+    if (body && body.pin) {
+      user.pin = pinOf(body.pin);
+      user.defaultPin = false;
+    }
     save(data);
     return adminView(data);
   }
   if ((m = route.match(/^DELETE \/admin\/users\/([^/]+)$/))) {
     admin();
     const id = decodeURIComponent(m[1]);
-    if (!data.users.some(u => u.id === id)) throw new DemoError(404, 'Dieses Mitglied ist schon gelöscht.');
+    if (!data.users.some(u => u.id === id)) throw new DemoError(404, 'Dieses Mitglied ist schon gelöscht.', 'member_deleted');
     data.users = data.users.filter(u => u.id !== id);
     delete data.contributions[id];
     delete data.grossBids[id];
@@ -262,15 +284,15 @@ function handle(method, path, body, token) {
   }
   if (route === 'PUT /admin/target') {
     admin();
-    const target = amount(body && body.targetAmount, 'Der Bedarf');
-    if (!(target > 0)) throw new DemoError(400, 'Der Bedarf muss größer als 0 sein.');
+    const target = amount(body && body.targetAmount, 'target');
+    if (!(target > 0)) throw new DemoError(400, 'Der Bedarf muss größer als 0 sein.', 'target_positive');
     data.targetAmount = target;
     save(data);
     return adminView(data);
   }
   if (route === 'GET /admin/export') {
     admin();
-    throw new DemoError(400, 'Exporte sind in der Demo ausgeschaltet. In der echten App bekommst du hier eine CSV- oder JSON-Datei mit allen Geboten, netto und brutto.');
+    throw new DemoError(400, 'Exporte sind in der Demo ausgeschaltet.', 'demo_no_export');
   }
   if (route === 'POST /admin/import') {
     admin();
@@ -282,16 +304,16 @@ function handle(method, path, body, token) {
       const user = known ? { ...known, name } : { id: `demo${Math.random().toString(36).slice(2, 9)}`, name, pin: DEMO_PIN, defaultPin: false };
       if (u.pin) user.pin = pinOf(String(u.pin));
       next.users.push(user);
-      const net = amount(u.contribution !== undefined ? u.contribution : (body.contributions || {})[u.id] || 0, 'Der Betrag');
+      const net = amount(u.contribution !== undefined ? u.contribution : (body.contributions || {})[u.id] || 0, 'amount');
       if (net > 0) next.contributions[user.id] = net;
-      const hours = amount(u.hours !== undefined ? u.hours : (body.hours || {})[u.id] || 0, 'Die Stunden', 744);
+      const hours = amount(u.hours !== undefined ? u.hours : (body.hours || {})[u.id] || 0, 'hours', 744);
       if (hours > 0) next.hours[user.id] = hours;
     }
-    if (Number(body.targetAmount) > 0) next.targetAmount = amount(body.targetAmount, 'Der Bedarf');
+    if (Number(body.targetAmount) > 0) next.targetAmount = amount(body.targetAmount, 'target');
     save(next);
     return { ...adminView(next), imported: next.users.length };
   }
-  throw new DemoError(404, 'Gibt es in der Demo nicht.');
+  throw new DemoError(404, 'Gibt es in der Demo nicht.', 'unknown_route');
 }
 
 // Same contract as api() in lib.js: resolves with the response, throws with status and message.

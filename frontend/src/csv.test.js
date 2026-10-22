@@ -32,7 +32,7 @@ test('keeps quoted line breaks and quotes', () => {
 
 test('export round-trips names, bids and hours; a bid typed brutto keeps its brutto amount', () => {
   const users = [{ id: '1', name: 'Müller, Eva' }, { id: '2', name: '=Bob' }, { id: '3', name: 'Cem' }];
-  const csv = membersToCsv(users, { 1: 12.5, 3: 12.61 }, { 2: 4.5 }, { 1: 14.88, 3: 15 }, { 1: 'netto', 3: 'brutto' });
+  const csv = membersToCsv({ users, contributions: { 1: 12.5, 3: 12.61 }, hours: { 2: 4.5 }, contributionsGross: { 1: 14.88, 3: 15 }, enteredAs: { 1: 'netto', 3: 'brutto' } });
   const lines = csv.split('\r\n');
   expect(lines[0]).toBe('\uFEFFusername,pin,contribution,contribution_gross,entered_as,hours');
   expect(lines[1]).toBe('"Müller, Eva",,12.5,14.88,netto,0');

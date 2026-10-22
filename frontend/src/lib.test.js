@@ -1,4 +1,5 @@
-import { ApiError, MAINTENANCE_MESSAGE, TIMEOUT_MS, api, deviceId, isNewer, loginWithPin, rememberTrust, trustFor } from './lib';
+import { t } from './i18n';
+import { ApiError, TIMEOUT_MS, api, deviceId, isNewer, loginWithPin, rememberTrust, trustFor } from './lib';
 
 const respond = (body, status = 200, headers = {}) => Promise.resolve({
   ok: status >= 200 && status < 300,
@@ -50,7 +51,7 @@ test('errors carry status, message and Retry-After', async () => {
 
 test('the proxy page of a stopped server counts as maintenance, the server\'s own 503 does not', async () => {
   global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) }));
-  await expect(api('/public')).rejects.toMatchObject({ status: 502, maintenance: true, message: MAINTENANCE_MESSAGE });
+  await expect(api('/public')).rejects.toMatchObject({ status: 502, maintenance: true, message: t('errors.maintenance') });
   global.fetch = jest.fn(() => respond({ error: 'Der Server ist gerade ausgelastet.' }, 503));
   await expect(api('/login', { method: 'POST', body: {} })).rejects.toMatchObject({ status: 503, maintenance: false, message: 'Der Server ist gerade ausgelastet.' });
 });

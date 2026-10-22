@@ -1,4 +1,4 @@
-import { parseAmount } from './lib';
+import { decimalSign, groupSign, parseAmount } from './lib';
 
 // Typing a bid or hours on the sheet. The keypad (touch devices) and the text field
 // (computers) follow the same rules. "raw" is what the member typed so far: decimal
@@ -7,8 +7,8 @@ import { parseAmount } from './lib';
 export const MAX_HOURS = 744; // MAX_HOURS in backend/server.js
 
 export const KINDS = {
-  money: { title: 'Dein Beitrag', unit: '€', maxInt: 6, maxDec: 2, label: 'Dein Beitrag in Euro' },
-  hours: { title: 'Dein Stundenbeitrag', unit: 'h', maxInt: 3, maxDec: 1, label: 'Deine Stunden pro Monat' }
+  money: { unit: '€', maxInt: 6, maxDec: 2 },
+  hours: { unit: 'h', maxInt: 3, maxDec: 1 }
 };
 
 // An empty field counts as 0, like the dimmed "0" it shows.
@@ -56,10 +56,17 @@ export function fromText(text, kind) {
   return kind === 'hours' && rawValue(next) > MAX_HOURS ? null : next;
 }
 
-const group = (int) => int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const group = (int) => int.replace(/\B(?=(\d{3})+(?!\d))/g, groupSign());
 
-// "1585,5" -> "1.585,5" while typing.
+// "1585,5" -> "1.585,5" while typing (in English "1,585.5").
 export function formatRaw(raw) {
   const [int, dec] = raw.split(',');
-  return raw.includes(',') ? `${group(int || '0')},${dec}` : group(int);
+  return raw.includes(',') ? `${group(int || '0')}${decimalSign()}${dec}` : group(int);
 }
+
+// The text field as the page's language writes it, in the editor's own form:
+// grouping signs go, the decimal sign becomes ",".
+export const fromField = (text, kind) => sanitize(String(text).split(groupSign()).join('').split(decimalSign()).join(','), kind);
+
+// A typed key that is the decimal sign: "," or "." in German and Spanish, only "." in English.
+export const isDecimalKey = (key) => key === decimalSign() || (decimalSign() === ',' && key === '.');

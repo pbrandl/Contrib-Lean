@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Lock, SearchX, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Lock, SearchX, Settings, Wrench } from 'lucide-react';
 import logo from './assets/franzwerk-logo.webp';
 import { DEMO } from './demo';
 import { countBids, formatHours, formatWhole, inMode, isPin, toGross, useDelayed, usesKeypad } from './lib';
+import { useSettings, useT } from './settings';
 
 export function Logo({ className }) {
+  const t = useT();
   // The demo carries no organisation's logo.
   if (DEMO) {
     return (
-      <span className={`demo-wordmark ${className || ''}`} role="img" aria-label="Bietrunde Demo">
-        Bietrunde<span>Demo</span>
+      <span className={`demo-wordmark ${className || ''}`} role="img" aria-label="Demo">
+        {t('app.name')}<span>Demo</span>
       </span>
     );
   }
@@ -27,23 +29,38 @@ export function Band({ children, className = '' }) {
   );
 }
 
-// Logo left, the name in the middle, "Abmelden" right.
+// The gear that opens the settings page; on every page, on the dark blue.
+export function SettingsButton({ className = '' }) {
+  const { openSettings, t } = useSettings();
+  return (
+    <button type="button" className={`settings-button ${className}`} onClick={openSettings} aria-label={t('settings.open')}>
+      <Settings className="h-6 w-6" aria-hidden="true" />
+    </button>
+  );
+}
+
+// Logo left, the name in the middle, settings and "Abmelden" right.
 export function TopBar({ label, onLogout }) {
+  const t = useT();
   return (
     <div className="topbar">
       <Logo className="h-14 w-auto" />
       <span className="topbar-name">{label}</span>
-      <button type="button" onClick={onLogout} className="topbar-logout">Abmelden</button>
+      <span className="topbar-end">
+        <SettingsButton />
+        <button type="button" onClick={onLogout} className="topbar-logout">{t('common.logout')}</button>
+      </span>
     </div>
   );
 }
 
 // Netto/brutto: a plain grey text button that shows the current mode and switches it.
 export function ModeToggle({ mode, onToggle }) {
+  const t = useT();
   const other = mode === 'brutto' ? 'netto' : 'brutto';
   return (
-    <button type="button" className="text-button" onClick={onToggle} aria-label={`Beträge ${mode}, auf ${other} umschalten`}>
-      {mode === 'brutto' ? 'Brutto' : 'Netto'}
+    <button type="button" className="text-button" onClick={onToggle} aria-label={t('amounts.toggle', { mode: t(`amounts.${mode}`), other: t(`amounts.${other}`) })}>
+      {t(`settings.amounts.${mode}`)}
     </button>
   );
 }
@@ -52,6 +69,7 @@ export function ModeToggle({ mode, onToggle }) {
 // shown whole, in the page's netto/brutto mode; `note` follows the Bedarf (" netto").
 // `totalGross`: the brutto total from the server, with bids typed brutto as typed.
 export function Progress({ total, totalGross, target, count, hours = 0, mode = 'netto', note = '' }) {
+  const t = useT();
   const ratio = target > 0 ? total / target : 0;
   const width = Math.min(100, ratio * 100);
   const percent = Math.floor(ratio * 100);
@@ -60,17 +78,17 @@ export function Progress({ total, totalGross, target, count, hours = 0, mode = '
       <div className="stats">
         <div>
           <p className="stat-big"><span>{formatWhole(mode === 'brutto' ? (totalGross !== undefined ? totalGross : toGross(total)) : total)}</span><span className="unit">€</span></p>
-          <p className="stat-sub">von {formatWhole(inMode(target, mode))}{'\u00a0'}€{note}</p>
+          <p className="stat-sub">{t('progress.of', { amount: `${formatWhole(inMode(target, mode))}\u00a0€` })}{note}</p>
         </div>
         <div className="stat-right">
           <p className="stat-big stat-dim"><span>{formatHours(hours)}</span><span className="unit">h</span></p>
-          <p className="stat-sub">pro Monat</p>
+          <p className="stat-sub">{t('progress.perMonth')}</p>
         </div>
       </div>
       <div
         className="progress-track mt-[1.6rem]"
         role="progressbar"
-        aria-label="Gedeckter Anteil des Bedarfs"
+        aria-label={t('progress.covered')}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.min(100, percent)}
@@ -78,7 +96,7 @@ export function Progress({ total, totalGross, target, count, hours = 0, mode = '
         <div className="progress-fill" style={{ width: `${width}%` }} />
       </div>
       <p className="mt-[0.8rem] flex justify-between gap-4 text-sm text-white/75">
-        <span>{ratio >= 1 ? `Bedarf gedeckt: ${percent} %` : `${percent} % gedeckt`}</span>
+        <span>{ratio >= 1 ? t('progress.full', { percent }) : t('progress.percent', { percent })}</span>
         <span>{countBids(count)}</span>
       </p>
     </div>
@@ -145,7 +163,8 @@ export const PIN_MAX = 8;
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
 const REVEAL_MS = 700;
 
-export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, back, children }) {
+export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }) {
+  const t = useT();
   const [pin, setPin] = useState('');
   const [reveal, setReveal] = useState(-1);
   const [error, setError] = useState('');
@@ -179,7 +198,7 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
     if (e) e.preventDefault();
     if (busy) return;
     if (pin.length < 4) {
-      setError(pin ? 'Die PIN hat mindestens 4 Ziffern.' : 'Gib deine PIN ein.');
+      setError(pin ? t('pin.tooShort') : t('pin.empty'));
       return;
     }
     setBusy(true);
@@ -201,14 +220,17 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
   return (
     <form className="pin-screen on-dark" onSubmit={submit} noValidate>
       <div className="pin-inner">
-        {back && <div className="pin-top">{back}</div>}
+        <div className="pin-top">
+          {back}
+          <SettingsButton className="ml-auto" />
+        </div>
         <div className="pin-head">
           <span className="pin-lock" aria-hidden="true"><Lock className="h-6 w-6" /></span>
           <h1>{title}</h1>
           {intro && <p>{intro}</p>}
         </div>
 
-        <label htmlFor="pin" className="sr-only">PIN</label>
+        <label htmlFor="pin" className="sr-only">{t('pin.label')}</label>
         <input
           ref={inputRef}
           id="pin"
@@ -242,7 +264,7 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
                 type="button"
                 className="key"
                 onClick={() => press(key)}
-                aria-label={key === 'back' ? 'Letzte Ziffer löschen' : undefined}
+                aria-label={key === 'back' ? t('keypad.back') : undefined}
               >
                 {key === 'back' ? <ArrowLeft className="h-7 w-7" aria-hidden="true" /> : key}
               </button>
@@ -250,8 +272,8 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
           </div>
         )}
 
-        <BusyButton type="submit" className="pin-submit" busy={busy} busyLabel="Wird geprüft" disabled={pin.length < 4}>
-          {submitLabel}
+        <BusyButton type="submit" className="pin-submit" busy={busy} busyLabel={t('busy.checking')} disabled={pin.length < 4}>
+          {submitLabel || t('pin.submit')}
         </BusyButton>
         {children && <div className="pin-foot">{children}</div>}
       </div>
@@ -261,6 +283,7 @@ export function PinLogin({ title, intro, submitLabel = 'Anmelden', onSubmit, bac
 
 // Sets a new PIN; with `confirm` the PIN has to be typed twice.
 export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
+  const t = useT();
   const [pin, setPin] = useState('');
   const [again, setAgain] = useState('');
   const [error, setError] = useState('');
@@ -269,11 +292,11 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!isPin(pin)) {
-      setError('Die PIN muss aus 4 bis 8 Ziffern bestehen.');
+      setError(t('pin.format'));
       return;
     }
     if (confirm && pin !== again) {
-      setError('Die beiden PINs stimmen nicht überein.');
+      setError(t('pin.mismatch'));
       return;
     }
     setBusy(true);
@@ -288,17 +311,17 @@ export function PinChange({ idPrefix, confirm = true, onSubmit, onCancel }) {
 
   return (
     <form onSubmit={submit} noValidate className="space-y-3">
-      <PinInput id={`${idPrefix}-pin`} label="Neue PIN (4 bis 8 Ziffern)" value={pin} onChange={(v) => { setPin(v); setError(''); }} autoFocus />
+      <PinInput id={`${idPrefix}-pin`} label={t('pin.new')} value={pin} onChange={(v) => { setPin(v); setError(''); }} autoFocus />
       {confirm && (
-        <PinInput id={`${idPrefix}-again`} label="Neue PIN wiederholen" value={again} onChange={(v) => { setAgain(v); setError(''); }} />
+        <PinInput id={`${idPrefix}-again`} label={t('pin.repeat')} value={again} onChange={(v) => { setAgain(v); setError(''); }} />
       )}
       {error && <p className="font-semibold text-ziegel" role="alert">{error}</p>}
       <div className="flex gap-2">
-        <BusyButton type="submit" className="btn-blau flex-1" busy={busy} busyLabel="Wird gespeichert">
-          PIN speichern
+        <BusyButton type="submit" className="btn-blau flex-1" busy={busy} busyLabel={t('busy.saving')}>
+          {t('pin.save')}
         </BusyButton>
         <button type="button" className="btn-rand flex-1" onClick={onCancel} disabled={busy}>
-          Abbrechen
+          {t('common.cancel')}
         </button>
       </div>
     </form>
@@ -333,9 +356,10 @@ export function Spinner({ className = '' }) {
 
 // While the page starts: only the blue top, and a spinner if it takes longer than 0.2 s.
 export function LoadingPage() {
+  const t = useT();
   const slow = useDelayed(true);
   return (
-    <div className="loading-page on-dark" role="status" aria-label="Lädt">
+    <div className="loading-page on-dark" role="status" aria-label={t('common.loading')}>
       {slow && <Spinner className="h-8 w-8 text-white" />}
     </div>
   );
@@ -345,6 +369,7 @@ export function LoadingPage() {
 function StatusScreen({ icon, title, children }) {
   return (
     <main className="status-screen on-dark">
+      <SettingsButton className="status-settings" />
       <div className="status-inner">
         <Logo className="status-logo" />
         <span className="pin-lock" aria-hidden="true">{icon}</span>
@@ -360,6 +385,7 @@ const MAINTENANCE_RETRY_MS = 5000;
 // The server does not answer (an update, a restart): the page asks again every few seconds
 // and goes back to the app on its own as soon as the server is there again.
 export function MaintenancePage({ onRetry }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const retry = useRef(onRetry);
   const alive = useRef(true);
@@ -386,35 +412,38 @@ export function MaintenancePage({ onRetry }) {
   }, []);
 
   return (
-    <StatusScreen icon={<Wrench className="h-6 w-6" />} title="Gleich wieder da">
-      <p>Die Bietrunde wird gerade kurz gewartet, meist dauert das nur eine Minute. Deine Gebote sind gespeichert.</p>
-      <p className="status-hint" role="status">Diese Seite prüft alle paar Sekunden von selbst und geht dann weiter.</p>
-      <BusyButton type="button" className="pin-submit status-action" busy={busy} busyLabel="Wird geprüft" onClick={check}>
-        Jetzt prüfen
+    <StatusScreen icon={<Wrench className="h-6 w-6" />} title={t('maintenance.title')}>
+      <p>{t('maintenance.text')}</p>
+      <p className="status-hint" role="status">{t('maintenance.hint')}</p>
+      <BusyButton type="button" className="pin-submit status-action" busy={busy} busyLabel={t('busy.checking')} onClick={check}>
+        {t('maintenance.check')}
       </BusyButton>
     </StatusScreen>
   );
 }
 
 export function NotFoundPage({ home = '/' }) {
+  const t = useT();
   return (
-    <StatusScreen icon={<SearchX className="h-6 w-6" />} title="Seite nicht gefunden">
-      <p>Diese Adresse gibt es bei der Bietrunde nicht. Vielleicht ist der Link nicht ganz vollständig.</p>
-      <a href={home} className="pin-submit status-action">Zur Bietrunde</a>
+    <StatusScreen icon={<SearchX className="h-6 w-6" />} title={t('notFound.title')}>
+      <p>{t('notFound.text')}</p>
+      <a href={home} className="pin-submit status-action">{t('notFound.home')}</a>
     </StatusScreen>
   );
 }
 
 export function OfflinePage({ onRetry }) {
+  const t = useT();
   return (
     <>
-      <Band className="py-3">
+      <Band className="flex items-center justify-between py-3">
         <Logo className="h-14 w-auto" />
+        <SettingsButton />
       </Band>
       <main className="wrap space-y-4 py-8">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Keine Verbindung</h1>
-        <p>Der Server antwortet gerade nicht. Prüfe dein Internet und versuche es noch einmal.</p>
-        <button type="button" className="btn-blau" onClick={onRetry}>Noch einmal versuchen</button>
+        <h1 className="font-display text-3xl font-bold tracking-tight">{t('offline.title')}</h1>
+        <p>{t('offline.text')}</p>
+        <button type="button" className="btn-blau" onClick={onRetry}>{t('offline.retry')}</button>
       </main>
     </>
   );

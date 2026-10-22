@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { render } from './test-utils';
 import AdminApp from './AdminApp';
 
 const respond = (body) => Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) });
@@ -41,9 +42,67 @@ test('the member list is folded away, and the netto/brutto setting changes only 
   expect(screen.getByLabelText('Mitglied eintragen')).toBeInTheDocument();
 
   expect(screen.getByText('von 6.500 €')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /Beträge netto/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Brutto' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Einstellungen schließen' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(screen.getByText('von 7.735 €')).toBeInTheDocument();
   expect(screen.getByText('1.190')).toBeInTheDocument();
   expect(screen.getByText('Aktuell 6.500 € netto')).toBeInTheDocument();
   expect(screen.getByLabelText('Neuer Bedarf in Euro (netto)')).toBeInTheDocument();
+});
+
+test('a tap on a member opens name and PIN; both are saved in one request', async () => {
+  const users = [{ id: '1', name: 'Anna', defaultPin: true }, { id: '2', name: 'Ben', defaultPin: false }];
+  global.fetch = jest.fn((url, options = {}) => {
+    if (options.method === 'PATCH') {
+      const body = JSON.parse(options.body);
+      return respond(state(users.map(u => (u.id === '1' ? { ...u, name: body.name || u.name, defaultPin: false } : u))));
+    }
+    return respond(state(users));
+  });
+  render(<AdminApp />);
+  fireEvent.click(await screen.findByRole('button', { name: /Mitglieder/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Anna/ }));
+  const name = screen.getByLabelText('Name');
+  expect(name).toHaveValue('Anna');
+  fireEvent.change(name, { target: { value: 'Anna Becker' } });
+  fireEvent.change(screen.getByLabelText(/Neue PIN/), { target: { value: '12' } });
+  const editor = within(name.closest('form'));
+  fireEvent.click(editor.getByRole('button', { name: 'Speichern' }));
+  expect(editor.getByRole('alert')).toHaveTextContent('4 bis 8 Ziffern');
+  fireEvent.change(screen.getByLabelText(/Neue PIN/), { target: { value: '24681357' } });
+  fireEvent.click(editor.getByRole('button', { name: 'Speichern' }));
+  expect(await screen.findByText('Name und PIN von Anna Becker sind gespeichert.')).toBeInTheDocument();
+  const patch = global.fetch.mock.calls.find(([, o]) => o && o.method === 'PATCH');
+  expect(patch[0]).toBe('/api/admin/users/1');
+  expect(JSON.parse(patch[1].body)).toEqual({ name: 'Anna Becker', pin: '24681357' });
+  expect(screen.getByText('Anna Becker')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+
+  // Deleting sits in the editor, behind a question.
+  fireEvent.click(screen.getByRole('button', { name: /Ben/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Mitglied löschen' }));
+  expect(screen.getByText(/Ben löschen\?/)).toBeInTheDocument();
+});
+
+test('export: Download on the left, the format on the right, remembered for next time', async () => {
+  const exported = { users: [{ id: '1', name: 'Anna' }], contributions: { 1: 100 }, hours: {}, contributionsGross: {}, enteredAs: {} };
+  global.fetch = jest.fn((url) => respond(url === '/api/admin/export' ? exported : state([{ id: '1', name: 'Anna', defaultPin: false }])));
+  const files = [];
+  URL.createObjectURL = jest.fn((blob) => { files.push(blob); return 'blob:x'; });
+  URL.revokeObjectURL = jest.fn();
+  const clicked = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function click() { files.push(this.download); });
+  render(<AdminApp />);
+  const format = await screen.findByLabelText('Format');
+  expect(format).toHaveValue('xlsx');
+  fireEvent.change(format, { target: { value: 'csv' } });
+  fireEvent.click(screen.getByRole('button', { name: /Herunterladen/ }));
+  await screen.findByRole('button', { name: /Herunterladen/ });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(files[0].type).toBe('text/csv;charset=utf-8');
+  expect(files[1]).toMatch(/^bietrunde-\d{4}-\d{2}-\d{2}\.csv$/);
+  expect(window.localStorage.getItem('franzwerk.exportFormat')).toBe('csv');
+  expect(screen.getByText(/Erlaubt: CSV, Excel \(XLSX\) oder JSON/)).toBeInTheDocument();
+  clicked.mockRestore();
 });

@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import { parseAmount, toGross } from './lib';
 
 // Minimal RFC 4180 parser. Detects "," or ";" (German Excel) as delimiter
@@ -67,9 +68,11 @@ const guard = (name) => (FORMULA_START.test(name) ? `'${name}` : name);
 
 // Format: username,pin,contribution[,hours] (header optional). An empty PIN keeps
 // the member's current PIN; new members get the default PIN.
-export function membersFromCsv(text) {
-  const rows = parseCsv(text);
-  if (!rows.length) throw new Error('Die Datei ist leer.');
+export const membersFromCsv = (text) => membersFromRows(parseCsv(text));
+
+// The same for rows from any table (CSV or the first sheet of an XLSX): [{ line, cells }].
+export function membersFromRows(rows) {
+  if (!rows.length) throw new Error(t('import.empty'));
 
   const head = rows[0].cells.map(c => c.trim().toLowerCase());
   let columns = { name: 0, pin: 1, contribution: 2, hours: 3 };
@@ -90,34 +93,35 @@ export function membersFromCsv(text) {
   const users = body.map(({ line, cells }) => {
     const cell = (i) => (i >= 0 && i < cells.length ? cells[i].trim() : '');
     const name = unguard(cell(columns.name));
-    if (!name) throw new Error(`Zeile ${line}: Der Name fehlt.`);
+    const at = t('where.line', { n: line });
+    if (!name) throw new Error(t('import.noName', { at }));
     const pin = cell(columns.pin);
     if (pin && !/^\d{4,8}$/.test(pin)) {
-      throw new Error(`Zeile ${line}: Die PIN „${pin}“ muss aus 4 bis 8 Ziffern bestehen.`);
+      throw new Error(t('import.badPin', { at, pin }));
     }
     const raw = cell(columns.contribution);
     const contribution = raw === '' ? 0 : parseAmount(raw);
     if (!Number.isFinite(contribution)) {
-      throw new Error(`Zeile ${line}: Der Betrag „${raw}“ ist keine gültige Zahl.`);
+      throw new Error(t('import.badAmount', { at, value: raw }));
     }
     const rawHours = cell(columns.hours);
     const hours = rawHours === '' ? 0 : parseAmount(rawHours);
     if (!Number.isFinite(hours)) {
-      throw new Error(`Zeile ${line}: Die Stunden „${rawHours}“ sind keine gültige Zahl.`);
+      throw new Error(t('import.badHours', { at, value: rawHours }));
     }
     // A bid typed brutto (entered_as "brutto", from an export) keeps its brutto amount.
     const brutto = columns.entered !== undefined && cell(columns.entered).toLowerCase() === 'brutto';
     const rawGross = brutto ? cell(columns.gross) : '';
     const gross = rawGross === '' ? NaN : parseAmount(rawGross);
     if (brutto && rawGross !== '' && !Number.isFinite(gross)) {
-      throw new Error(`Zeile ${line}: Der Bruttobetrag „${rawGross}“ ist keine gültige Zahl.`);
+      throw new Error(t('import.badGross', { at, value: rawGross }));
     }
     const user = { line, name, pin: pin || undefined, contribution, hours };
     if (brutto && Number.isFinite(gross)) Object.assign(user, { contributionGross: gross, enteredAs: 'brutto' });
     return user;
   });
 
-  if (!users.length) throw new Error('Die Datei enthält keine Mitglieder.');
+  if (!users.length) throw new Error(t('import.noMembers'));
   return users;
 }
 
@@ -130,14 +134,20 @@ const quote = (value) => {
 // `contribution` is netto. `entered_as` says how the member typed the bid: for "brutto",
 // `contribution_gross` is that typed amount and the import keeps it; otherwise it is only
 // netto x 1.19 for reading. The BOM makes Excel read the file as UTF-8 (umlauts).
-export function membersToCsv(users, contributions, hours = {}, gross = {}, enteredAs = {}) {
-  const rows = [
+// The export as a table, for CSV and XLSX alike (the same columns, so both import again).
+// `data`: the answer of GET /api/admin/export.
+export function memberRows({ users, contributions = {}, hours = {}, contributionsGross: gross = {}, enteredAs = {} }) {
+  return [
     ['username', 'pin', 'contribution', 'contribution_gross', 'entered_as', 'hours'],
     ...users.map(u => {
       const net = contributions[u.id] || 0;
       const brutto = net > 0 && enteredAs[u.id] === 'brutto' && gross[u.id] > 0;
-      return [guard(u.name), '', String(net), String(brutto ? gross[u.id] : toGross(net)), net > 0 ? (brutto ? 'brutto' : 'netto') : '', String(hours[u.id] || 0)];
+      return [u.name, '', net, brutto ? gross[u.id] : toGross(net), net > 0 ? (brutto ? 'brutto' : 'netto') : '', hours[u.id] || 0];
     })
   ];
+}
+
+export function membersToCsv(data) {
+  const rows = memberRows(data).map((row, i) => (i === 0 ? row : [guard(row[0]), ...row.slice(1)]));
   return `\uFEFF${rows.map(r => r.map(quote).join(',')).join('\r\n')}\r\n`;
 }

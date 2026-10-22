@@ -1,5 +1,27 @@
 # Änderungen
 
+## 2.0.0 – 22.10.2026
+
+Neues Paket im Frontend (`fflate`, für Excel-Dateien): Beim Einspielen im Ordner `frontend` `npm ci` ausführen statt `node_modules` zu kopieren (siehe `DEPLOY.md`). Das Backend hat keine neuen Pakete.
+
+**Für alle**
+
+- Einstellungen auf jeder Seite (Zahnrad oben rechts): Darstellung hell, dunkel oder automatisch wie das Gerät, Sprache und Beträge netto oder brutto. Pro Gerät gemerkt; die Netto/Brutto-Wahl aus Version 1 wird übernommen.
+- Die App gibt es auf Deutsch, Englisch und Spanisch. Beim ersten Besuch gilt die Sprache des Browsers, sonst Deutsch. Zahlen erscheinen im Format der Sprache (1.585,50 oder 1,585.50), auch beim Eintippen.
+- Dunkelmodus für alle Seiten.
+- Fehlermeldungen des Servers erscheinen in der eingestellten Sprache.
+
+**Admin**
+
+- Ein Tipp auf ein Mitglied öffnet Name und PIN zum Ändern, beides in einem Schritt. Löschen sitzt dort hinter einer Rückfrage.
+- Export mit einem Knopf: links „Herunterladen“, rechts das Format (Excel/XLSX, CSV oder JSON). Das gewählte Format wird gemerkt.
+- Import über einen Knopf: Die App erkennt selbst, ob die Datei Excel (XLSX), CSV oder JSON ist, auch CSV aus dem deutschen Excel. Ein Hinweis nennt die erlaubten Dateitypen.
+
+**Für spätere Erweiterungen**
+
+- Alle Texte stehen in je einer Datei pro Sprache (`frontend/src/i18n/`). Eine neue Sprache ist eine neue Datei und eine Zeile.
+- Einstellungen, Exportformate und Farben sind je an einer Stelle beschrieben; neue Einträge erscheinen dann von selbst auf der Einstellungsseite, in der Formatauswahl und im Dunkelmodus.
+
 ## 1.0.0 – 18.10.2026
 
 Die erste fertige Version, gebaut für die Bietrunde im Oktober 2026. Pakete (`package-lock.json`) unverändert gegenüber dem bisherigen Stand, beim Einspielen reicht das Kopieren von `node_modules` (siehe `DEPLOY.md`).

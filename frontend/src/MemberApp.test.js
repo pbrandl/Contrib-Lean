@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { render } from './test-utils';
 import MemberApp from './MemberApp';
 import { toGross, toNet } from './lib';
 
@@ -98,7 +99,7 @@ test('brutto mode shows brutto everywhere, and a brutto input is sent as brutto 
   render(<MemberApp />);
   fireEvent.click(await screen.findByRole('button', { name: /Beträge netto/ }));
   expect(screen.getByRole('button', { name: /Beträge brutto/ })).toHaveTextContent('Brutto');
-  expect(JSON.parse(window.localStorage.getItem('franzwerk.mode'))).toBe('brutto');
+  expect(JSON.parse(window.localStorage.getItem('franzwerk.settings')).amounts).toBe('brutto');
   expect(screen.getByTestId('own-amount')).toHaveTextContent('1.886,15');
   expect(screen.getByText('von 28.560 €')).toBeInTheDocument();
 

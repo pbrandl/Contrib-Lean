@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { render } from './test-utils';
 import { PinLogin } from './ui';
 
 test('PIN boxes: one empty box to start, a digit shows briefly and becomes a dot, at most 8', async () => {

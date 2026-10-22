@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. Current version: 1.0.0 (`CHANGELOG.md`). `README.md` has the operations guide (data folder, backups, PIN reset, restore), `DEPLOY.md` (German, for the owner) the way to install a new version.
+"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. Current version: 2.0.0 (`CHANGELOG.md`). `README.md` has the operations guide (data folder, backups, PIN reset, restore), `DEPLOY.md` (German, for the owner) the way to install a new version.
 
 - `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
 - `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
 
-User-facing text is German and uses "du". Server error messages are shown to users as they are (`HttpError` message → `ApiError` message in the frontend), so write them in German. Code and comments are in English.
+User-facing text exists in German (main language, "du"), English and Spanish, all in `frontend/src/i18n/{de,en,es}.js`; never write a visible text into a component. Server errors carry a `code` and `params` (`HttpError(status, message, retryAfterMs, code, params)`), and the frontend shows `errors.<code>` in the page's language; the German `message` stays for the log and older pages. Code and comments are in English.
 
 ## Commands
 
@@ -35,7 +35,7 @@ CI=true npx react-scripts test --watchAll=false -t "round-trips"     # one test 
 CI=true npm run build               # ESLint runs inside the build; CI=true turns warnings into errors
 ```
 
-`frontend/.env` sets `INLINE_RUNTIME_CHUNK=false`. Keep it: the Content-Security-Policy in `public/.htaccess` forbids inline scripts, and without it the built `index.html` would contain one.
+`frontend/.env` sets `INLINE_RUNTIME_CHUNK=false`. Keep it: the Content-Security-Policy in `public/.htaccess` forbids inline scripts, and without it the built `index.html` would contain one. It also sets `REACT_APP_DEMO=0`, so the flag is a build-time constant and the normal build drops the demo backend (and keeps the XLSX code as a lazy chunk, see `files.js`).
 
 There is no separate lint script. `npm start` has no dev proxy and the backend sends no CORS headers, so the dev server cannot reach the API. To run the whole app locally, serve the build from the backend's own `app`: require `backend/server.js`, add `express.static('frontend/build')` and a `/admin` route that sends `index.html`, then call `start()`.
 
@@ -104,17 +104,28 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 ### Import and export
 
+- `frontend/src/files.js` lists the export formats (`EXPORT_FORMATS`: XLSX, CSV, JSON; the admin page offers them in a select next to "Herunterladen", the choice is kept in `localStorage`) and reads import files: `readImportFile` decides by the first bytes (zip = XLSX, `{`/`[` = JSON, old `.xls` gets an explanation, everything else is CSV, UTF-8 or Windows-1252). A new format is one entry there.
+- XLSX (`xlsx.js`, with `fflate` for the zip, loaded on demand): `writeXlsx` writes one sheet with inline strings, numbers, a bold frozen header row and the default cell style Excel expects; `readXlsx` reads the first sheet (shared or inline strings, cell references) into the same `{ line, cells }` rows as the CSV parser. CSV and XLSX share `memberRows`/`membersFromRows` in `csv.js`, so both have the same columns and import again.
 - CSV is parsed and written in the browser (`frontend/src/csv.js`). It accepts `,` or `;`, German number formats and a BOM, and guards against spreadsheet formulas. The browser always sends JSON to `POST /admin/import`.
 - Export: `contributionsGross` and `enteredAs` (`brutto`/`netto`) per bid; the CSV has `contribution_gross` and `entered_as`. The import keeps a brutto amount only where `enteredAs` is `brutto`; otherwise it reads the netto value.
 - The import replaces all members, bids and hours. It matches existing members by id, then by name (case-insensitive, `sameName`). Matched members keep their PIN unless the file sets one; new members get `DEFAULT_PIN`. A backup is written first.
 
+### Languages, settings and theme
+
+- `i18n/index.js`: `LANGUAGES` (code, name, `Intl` locale, messages), `t(key, params)` with `{placeholders}` and `{ one, other }` plurals (via `Intl.PluralRules`), fallback to German. A new language: copy `de.js`, translate, add one line; `i18n.test.js` checks that every language has the same keys and placeholders as German. Number formats follow the language (`locale()` in `lib.js`); typing amounts too (`decimalSign`/`groupSign`, `fromField`, `isDecimalKey` in `entry.js`: in English only "." is decimal).
+- `settings.js`: `SETTINGS` describes the per-device settings (`theme`: system/light/dark, `language`, `amounts`: netto/brutto) with their initial values (browser language, the version-1 `franzwerk.mode`); stored in `franzwerk.settings`. `SettingsProvider` (in `App.js`) applies the theme (class `dark` on `<html>`, following the device for `system`) and the language; `useT()` gives `t` and re-renders on a language change, `useAmountMode()` replaces the old per-page mode. A new setting: one entry in `SETTINGS` plus texts `settings.<key>.label/.hint/.<option>`; `SettingsPage.js` renders it.
+- The settings page lies over every page (`Shell` in `App.js`, the page below is `inert` and keeps its state) and has its own history entry; `SettingsButton` (gear) sits in the top bar, the front page header, the PIN screen, the status screens and the offline page. `FrontPage`'s popstate handler keeps the PIN step when only the settings entry is popped.
+- Dark mode: the palette in `tailwind.config.js` reads CSS variables (`--c-*`, RGB channels) defined in `index.css` for `:root` and `.dark`. Use the palette (`bg-flaeche` for cards and fields instead of `bg-white`, `text-akzent` for brand-blue text on light surfaces, `text-tinte`, `bg-papier`) and new components follow the theme by themselves. The dark blue screens (PIN, sheet, status) and the header look the same in both.
+- Tests render pages with `render` from `src/test-utils.js` (inside `SettingsProvider`); `setupTests.js` makes the browser ask for German and resets the settings before every test.
+
 ### Frontend structure
 
-- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter` and `timeout`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, de-DE formatting (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`, `useAmountMode` stores the display mode per device), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
+- `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter`, `timeout` and `code`, the message already translated by `errorMessage`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, formatting in the page's language (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
 - `ui.js`: shared components (`Band` header, `TopBar`, `Progress`, `ModeToggle`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
 - **Every button that waits for the server is a `BusyButton`** (`busy`, `busyLabel` for screen readers, `disabled` only for "not possible yet"). While busy it looks the same and ignores clicks; after 0.2 s (`useDelayed`) a spinner replaces its content and the button keeps its width. No "Wird … …" texts on buttons.
 - `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview. `usesKeypad()` in `lib.js` picks the keypad (`pointer: coarse`) or the keyboard, for the sheet and the PIN entry.
-- `demo.js`: the demo backend (routes and responses of `server.js` in the browser, 24 example members, state in `localStorage`); `App.js` shows a demo strip and switches to the admin view with `#admin`. `scripts/demo-inline.py` turns the demo build into one page.
+- Admin member list: a tap on a row opens `MemberEditor` (name, new PIN, delete behind a question); it saves with `PATCH /api/admin/users/:id { name?, pin? }`, one write and audit line(s) `user_renamed`/`pin_changed`. The old `PUT .../pin` stays for the admin's own PIN.
+- `demo.js`: the demo backend (routes, responses and error codes of `server.js` in the browser, 24 example members, state in `localStorage`); `App.js` shows a demo strip and switches to the admin view with `#admin`. `scripts/demo-inline.py` turns the demo build into one page.
 - `MemberApp.js`:
   - `FrontPage`: name list, search, PIN step.
   - `MemberPage`: bid and hours card, the sheet, PIN change.
@@ -137,6 +148,8 @@ If you change one of these, update both sides:
 | Max. bid 1,000,000 € netto | `MAX_AMOUNT` | `KINDS.money.maxInt` (6 digits) in `entry.js` |
 | Cents for euros, 0.1 h for hours | `requireAmount`, `requireHours` | `KINDS` in `entry.js`, `round1` in `AmountSheet.js` |
 | Brutto = netto × 1.19 in whole cents; brutto typed → netto rounded up | `VAT_PERCENT`, `toGross`, `toNet` | `VAT_PERCENT`, `toGross`, `toNet` in `lib.js` |
+| Error codes and their params | `HttpError(…, code, params)` | `errors.<code>` in every `i18n/*.js`, `errorMessage` in `lib.js`, `DemoError` in `demo.js` |
+| Wait times ("in 3 Minuten") | `waitText` | `waitText` in `lib.js` |
 
 ## Product decisions
 

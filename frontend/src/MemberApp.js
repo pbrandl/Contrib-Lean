@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useAmountMode, useNotice, usePolling } from './lib';
-import { Band, LoadingPage, Logo, MaintenancePage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, TopBar } from './ui';
+import { api, byName, deviceId, fold, formatHours, formatNumber, isNewer, loginWithPin, memberSession, ownGross, rememberTrust, totalGross, useNotice, usePolling } from './lib';
+import { useAmountMode, useT } from './settings';
+import { Band, LoadingPage, Logo, MaintenancePage, ModeToggle, Notice, OfflinePage, PinChange, PinLogin, Progress, SettingsButton, TopBar } from './ui';
 import AmountSheet, { usesKeypad } from './AmountSheet';
 
 // First letters of the first two words: "Jörg Müller-Lüdenscheidt" -> "JM", "Steffen" -> "S"
@@ -48,6 +49,8 @@ export default function MemberApp() {
 // Front page: logo, progress, name search and the list of members.
 
 function FrontPage({ onLogin }) {
+  const t = useT();
+  const [mode] = useAmountMode();
   const [state, setState] = useState({ status: 'loading' });
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -71,7 +74,9 @@ function FrontPage({ onLogin }) {
 
   // The back gesture on the phone returns from the PIN step to the list.
   useEffect(() => {
-    const onPop = () => setSelected(null);
+    const onPop = () => {
+      if (!(window.history.state && window.history.state.pinFor)) setSelected(null);
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -118,11 +123,11 @@ function FrontPage({ onLogin }) {
     return (
       <PinLogin
         title={selected.name}
-        intro="Gib deine PIN ein, um dein Gebot abzugeben."
+        intro={t('front.pinIntro')}
         onSubmit={login}
-        back={<button type="button" onClick={back} className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> Anderer Name</button>}
+        back={<button type="button" onClick={back} className="pin-back"><ChevronLeft className="h-5 w-5" aria-hidden="true" /> {t('front.otherName')}</button>}
       >
-        PIN vergessen? Ein Admin kann dir eine neue setzen.
+        {t('front.pinForgotten')}
       </PinLogin>
     );
   }
@@ -131,9 +136,10 @@ function FrontPage({ onLogin }) {
     <>
       {!selected && (
         <Band className="pb-[3.9rem] pt-6">
+          <SettingsButton className="absolute right-3 top-3" />
           <Logo className="h-28 w-auto sm:h-32" />
           <div className="mt-5">
-            <Progress total={data.totalRaised} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} note=" netto" />
+            <Progress total={data.totalRaised} totalGross={totalGross(data)} target={data.targetAmount} count={data.contributorCount} hours={data.totalHours} mode={mode} note={t(`progress.note.${mode}`)} />
           </div>
         </Band>
       )}
@@ -144,16 +150,16 @@ function FrontPage({ onLogin }) {
       <main className={`wrap relative -mt-8 pb-16 ${searching || query ? 'min-h-[calc(100svh+8rem)]' : ''}`}>
         {(
           <div className="card p-4 sm:p-6">
-            <h1 className="font-display text-2xl font-bold tracking-tight">Wähle deinen Namen</h1>
+            <h1 className="font-display text-2xl font-bold tracking-tight">{t('front.chooseName')}</h1>
 
             {members.length === 0 ? (
               <p className="mt-3 text-tinte/70">
-                Noch niemand ist eingetragen. Die Admins tragen alle ein, die mitbieten.
+                {t('front.empty')}
               </p>
             ) : (
               <>
                 <div className="relative mt-4 scroll-mt-4">
-                  <label htmlFor="search" className="sr-only">Name suchen</label>
+                  <label htmlFor="search" className="sr-only">{t('front.search')}</label>
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-tinte/40" aria-hidden="true" />
                   <input
                     ref={searchRef}
@@ -163,7 +169,7 @@ function FrontPage({ onLogin }) {
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={focusSearch}
                     onBlur={() => setSearching(false)}
-                    placeholder="Name suchen"
+                    placeholder={t('front.search')}
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="none"
@@ -177,7 +183,7 @@ function FrontPage({ onLogin }) {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => setQuery('')}
                       className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-tinte/50 hover:bg-tinte/5 hover:text-tinte"
-                      aria-label="Suche leeren"
+                      aria-label={t('common.clearSearch')}
                     >
                       <X className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -185,7 +191,7 @@ function FrontPage({ onLogin }) {
                 </div>
 
                 {matches.length === 0 ? (
-                  <p className="mt-4 px-1 text-tinte/70">Kein Name passt zu „{query.trim()}“.</p>
+                  <p className="mt-4 px-1 text-tinte/70">{t('front.noMatch', { query: query.trim() })}</p>
                 ) : (
                   <ul className="-mx-2 mt-3 space-y-1">
                     {matches.map(member => (
@@ -223,10 +229,11 @@ const SAVE_RETRIES = 3;
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
+  const t = useT();
   const { token } = session;
   const [me, setMe] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [mode, toggleMode] = useAmountMode('franzwerk.mode');
+  const [mode, toggleMode] = useAmountMode();
   const [sheet, setSheet] = useState(null);
   // The sheet whose value is being saved. It can be closed before the answer comes.
   const [saving, setSaving] = useState(null);
@@ -360,19 +367,19 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
     if (saved) {
       apply(saved);
       if (sheetRef.current === started) closeSheet();
-      if (kind === 'hours') showNotice('ok', `Dein Stundenbeitrag ist jetzt ${formatHours(saved.hours)} h.`);
-      else if (saved.contribution > 0) showNotice('ok', `Dein Beitrag ist jetzt ${formatNumber(mode === 'brutto' ? ownGross(saved) : saved.contribution)} €.`);
-      else showNotice('ok', 'Dein Beitrag ist zurückgezogen.');
+      if (kind === 'hours') showNotice('ok', t('member.savedHours', { hours: formatHours(saved.hours) }));
+      else if (saved.contribution > 0) showNotice('ok', t('member.savedBid', { amount: formatNumber(mode === 'brutto' ? ownGross(saved) : saved.contribution) }));
+      else showNotice('ok', t('member.withdrawn'));
     } else if (failure.status === 401) {
       onLogout(failure.message);
     } else if (failure.status === 0) {
       // Without an answer it may still have been saved: show the server's state.
-      showNotice('error', `${failure.message} Dein ${kind === 'money' ? 'Beitrag' : 'Stundenbeitrag'} wird neu geladen, bitte prüfe ihn.`);
+      showNotice('error', `${failure.message} ${t(kind === 'money' ? 'member.reloadBid' : 'member.reloadHours')}`);
       load();
     } else {
-      showNotice('error', `Nicht gespeichert. ${failure.message}`);
+      showNotice('error', `${t('common.notSaved')} ${failure.message}`);
     }
-  }, [sheet, token, mode, apply, closeSheet, load, onLogout, showNotice]);
+  }, [sheet, token, mode, apply, closeSheet, load, onLogout, showNotice, t]);
 
   // An open sheet stays, so nothing typed is lost; saving then shows the maintenance message.
   if (loadError === 'maintenance' && !sheet) return <MaintenancePage onRetry={load} />;
@@ -385,7 +392,7 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
       onSession(data.session);
       apply(data);
       setPinOpen(false);
-      showNotice('ok', 'Deine neue PIN gilt ab sofort.');
+      showNotice('ok', t('member.pinChanged'));
     } catch (err) {
       if (err.status === 401) onLogout(err.message);
       else throw err;
@@ -404,18 +411,18 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
         <main className="wrap relative -mt-8 grid gap-3 pb-8">
           <section aria-labelledby="bid-heading" className="card p-4">
             <div className="flex flex-wrap items-center justify-between gap-x-3">
-              <h1 id="bid-heading" className="font-display text-2xl font-bold tracking-tight">Dein Beitrag</h1>
+              <h1 id="bid-heading" className="font-display text-2xl font-bold tracking-tight">{t('member.title')}</h1>
               <ModeToggle mode={mode} onToggle={toggleMode} />
             </div>
 
             <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <p className="own-value" aria-live="polite">
-                <span className="sr-only">Beitrag: </span>
+                <span className="sr-only">{t('member.bidLabel')} </span>
                 <span data-testid="own-amount">{formatNumber(mode === 'brutto' ? ownGross(me) : me.contribution)}</span>
                 <span className="unit">€</span>
               </p>
-              <p className="own-value ml-auto text-right text-werkblau" aria-live="polite">
-                <span className="sr-only">Stunden pro Monat: </span>
+              <p className="own-value ml-auto text-right text-akzent" aria-live="polite">
+                <span className="sr-only">{t('member.hoursLabel')} </span>
                 <span data-testid="own-hours">{formatHours(me.hours)}</span>
                 <span className="unit">h</span>
               </p>
@@ -423,24 +430,24 @@ function MemberPage({ session, onSession, onLogout, showNotice, clearNotice }) {
 
             <div className="mt-4 grid grid-cols-2 gap-2">
               <button ref={moneyButton} type="button" className="big-btn" onClick={() => openSheet('money')}>
-                Beitrag ändern
+                {t('member.changeBid')}
               </button>
-              <button ref={hoursButton} type="button" className="big-btn" lang="de" onClick={() => openSheet('hours')}>
-                Stunden ändern
+              <button ref={hoursButton} type="button" className="big-btn" onClick={() => openSheet('hours')}>
+                {t('member.changeHours')}
               </button>
             </div>
           </section>
 
           {pinOpen ? (
             <section aria-labelledby="pin-heading" className="card p-4">
-              <h2 id="pin-heading" className="font-display text-xl font-bold tracking-tight">Neue PIN</h2>
+              <h2 id="pin-heading" className="font-display text-xl font-bold tracking-tight">{t('member.newPin')}</h2>
               <div className="mt-3">
                 <PinChange idPrefix="own" onSubmit={changePin} onCancel={() => setPinOpen(false)} />
               </div>
             </section>
           ) : (
             <div className="flex justify-center">
-              <button type="button" className="text-button" onClick={() => setPinOpen(true)}>PIN ändern</button>
+              <button type="button" className="text-button" onClick={() => setPinOpen(true)}>{t('member.changePin')}</button>
             </div>
           )}
         </main>

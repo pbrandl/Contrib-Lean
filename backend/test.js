@@ -552,6 +552,48 @@ async function check(name, fn) {
     assert.deepEqual(after.users, JSON.parse(before).users);
   });
 
+  await check('admin changes name and PIN of a member in one step; the old sessions end', async () => {
+    const added = (await call('POST', '/admin/users', { token: admin, body: { name: 'Umbenennen Alt' } })).body.added;
+    const before = (await call('POST', '/login', { body: { userId: added.id, pin: added.startPin, device: newDevice() } })).body.token;
+    const renamed = await call('PATCH', `/admin/users/${added.id}`, { token: admin, body: { name: '  Umbenennen   Neu ' } });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.users.find(u => u.id === added.id).name, 'Umbenennen Neu');
+    assert.equal((await call('GET', '/me', { token: before })).status, 200, 'a new name keeps the session');
+    const both = await call('PATCH', `/admin/users/${added.id}`, { token: admin, body: { name: 'Umbenennen Fertig', pin: '24680135' } });
+    assert.equal(both.status, 200);
+    assert.equal((await call('GET', '/me', { token: before })).status, 401, 'a new PIN ends the session');
+    const login = await call('POST', '/login', { body: { userId: added.id, pin: '24680135', device: newDevice() } });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.user.name, 'Umbenennen Fertig');
+    const taken = await call('PATCH', `/admin/users/${added.id}`, { token: admin, body: { name: 'TEST BIETERIN' } });
+    assert.equal(taken.status, 409);
+    assert.equal(taken.body.code, 'name_taken');
+    assert.deepEqual(taken.body.params, { name: 'TEST BIETERIN' });
+    assert.equal((await call('PATCH', `/admin/users/${added.id}`, { token: admin, body: { pin: '12' } })).body.code, 'pin_format');
+    assert.equal((await call('PATCH', `/admin/users/${added.id}`, { token: admin, body: {} })).status, 400);
+    assert.equal((await call('PATCH', '/admin/users/admin', { token: admin, body: { name: 'Chef' } })).body.code, 'admin_not_editable');
+    assert.equal((await call('PATCH', '/admin/users/999', { token: admin, body: { name: 'Niemand' } })).body.code, 'member_gone');
+    assert.equal((await call('PATCH', `/admin/users/${added.id}`, { token: await memberNow(), body: { name: 'Hack' } })).status, 401);
+    const log = fs.readFileSync(path.join(dataDir, 'audit.log'), 'utf8');
+    assert.match(log, /"event":"user_renamed".*"from":"Umbenennen Alt","to":"Umbenennen Neu"/);
+  });
+
+  await check('errors carry a code and parameters, so the page can show them in its language', async () => {
+    const wrong = await call('POST', '/login', { body: { userId: memberId, pin: '00000000', device: newDevice() } });
+    assert.equal(wrong.body.code, 'wrong_pin');
+    assert.equal(wrong.body.params.left, 4);
+    assert.match(wrong.body.error, /PIN falsch/, 'older pages still get the German text');
+    const amount = await call('PUT', '/me/contribution', { token: await memberNow(), body: { amount: -1 } });
+    assert.equal(amount.status, 400, JSON.stringify(amount.body));
+    assert.deepEqual([amount.body.code, amount.body.params.field], ['amount_range', 'bid']);
+    const line = await call('POST', '/admin/import', { token: admin, body: { users: [{ name: 'A', line: 3, hours: 999 }] } });
+    assert.deepEqual([line.body.code, line.body.params.where], ['hours_range', { line: 3 }]);
+    assert.match(line.body.error, /^Zeile 3: Die Stunden/);
+    const twins = await call('POST', '/admin/import', { token: admin, body: { users: [{ name: 'A' }, { name: 'a' }] } });
+    assert.deepEqual(twins.body.params, { name: 'a', first: { entry: 1 }, second: { entry: 2 } });
+    assert.equal((await call('GET', '/nothing-here')).body.code, 'unknown_route');
+  });
+
   await check('delete removes member and bid; admin cannot be deleted', async () => {
     const res = await call('DELETE', `/admin/users/${memberId}`, { token: admin });
     assert.equal(res.status, 200);

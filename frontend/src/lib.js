@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEMO, demoApi } from './demo';
+import { hasMessage, language, locale, t } from './i18n';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -7,20 +8,51 @@ const API_URL = process.env.REACT_APP_API_URL || '/api';
 export const TIMEOUT_MS = 15000;
 
 // status 0: no answer. `timeout`: the request may still have reached the server.
+// `code`: the server's error code (backend/server.js), the message is already translated.
 export class ApiError extends Error {
-  constructor(status, message, { retryAfter = 0, timeout = false, maintenance = false } = {}) {
+  constructor(status, message, { retryAfter = 0, timeout = false, maintenance = false, code } = {}) {
     super(message);
     this.status = status;
     this.retryAfter = retryAfter;
     this.timeout = timeout;
     this.maintenance = maintenance;
+    this.code = code;
   }
 }
 
 // While the service is stopped (an update, a restart), the Uberspace proxy answers /api
 // itself with 502, 503 or 504 and an HTML page. The server's own errors are JSON.
-export const MAINTENANCE_MESSAGE = 'Die Bietrunde wird gerade kurz gewartet. Versuche es in einer Minute noch einmal.';
 const PROXY_ERRORS = [502, 503, 504];
+
+// "in 3 Minuten" from milliseconds, like waitText in backend/server.js.
+export function waitText(ms) {
+  const minutes = Math.ceil(ms / 60000);
+  if (minutes <= 1) return t('time.minute');
+  return minutes <= 90 ? t('time.minutes', { count: minutes }) : t('time.hours', { count: Math.ceil(minutes / 60) });
+}
+
+// "Zeile 3: " for errors in an import file.
+export const wherePrefix = (where) => (where ? `${where.line ? t('where.line', { n: where.line }) : t('where.entry', { n: where.entry })}: ` : '');
+
+// The server's error in the page's language; its German text if this page does not know the code.
+export function errorMessage(data, status) {
+  const code = data && data.code;
+  if (code && hasMessage(`errors.${code}`)) {
+    const p = data.params || {};
+    const key = p.admin && hasMessage(`errors.${code}_admin`) ? `${code}_admin` : code;
+    return t(`errors.${key}`, {
+      ...p,
+      count: p.left,
+      where: wherePrefix(p.where),
+      first: p.first ? wherePrefix(p.first).slice(0, -2) : undefined,
+      second: p.second ? wherePrefix(p.second).slice(0, -2) : undefined,
+      field: p.field ? t(`fields.${p.field}`) : undefined,
+      max: typeof p.max === 'number' ? formatNumber(p.max) : p.max,
+      wait: typeof p.wait === 'number' ? waitText(p.wait) : undefined
+    });
+  }
+  return (data && (data.error || data.message)) || t('errors.status', { status });
+}
 
 // `timeout`: longer for requests that may take a while on the server (import).
 export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT_MS } = {}) {
@@ -28,7 +60,7 @@ export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT
     try {
       return await demoApi(path, { method, body, token });
     } catch (err) {
-      throw new ApiError(err.status || 500, err.message);
+      throw new ApiError(err.status || 500, err.code ? errorMessage(err, err.status) : err.message, { code: err.code });
     }
   }
   const headers = {};
@@ -52,10 +84,8 @@ export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT
         signal: controller ? controller.signal : undefined
       });
     } catch {
-      if (timedOut) {
-        throw new ApiError(0, 'Der Server antwortet gerade nicht. Versuche es gleich noch einmal.', { timeout: true });
-      }
-      throw new ApiError(0, 'Keine Verbindung zum Server. Prüfe dein Internet und versuche es noch einmal.');
+      if (timedOut) throw new ApiError(0, t('errors.timeout'), { timeout: true });
+      throw new ApiError(0, t('errors.offline'));
     }
 
     let data = null;
@@ -65,15 +95,13 @@ export async function api(path, { method = 'GET', body, token, timeout = TIMEOUT
       // empty or non-JSON body (or the answer stopped halfway)
     }
     if (!response.ok && data === null && PROXY_ERRORS.includes(response.status)) {
-      throw new ApiError(response.status, MAINTENANCE_MESSAGE, { maintenance: true });
+      throw new ApiError(response.status, t('errors.maintenance'), { maintenance: true });
     }
     if (!response.ok) {
       const retryAfter = Number(response.headers && response.headers.get && response.headers.get('Retry-After')) || 0;
-      throw new ApiError(response.status, (data && data.error) || `Serverfehler (${response.status}). Bitte versuche es noch einmal.`, { retryAfter });
+      throw new ApiError(response.status, errorMessage(data, response.status), { retryAfter, code: data && data.code });
     }
-    if (timedOut) {
-      throw new ApiError(0, 'Der Server antwortet gerade nicht. Versuche es gleich noch einmal.', { timeout: true });
-    }
+    if (timedOut) throw new ApiError(0, t('errors.timeout'), { timeout: true });
     return data;
   } finally {
     clearTimeout(timer);
@@ -109,6 +137,8 @@ function stored(getStore, key) {
   };
 }
 
+export const settingsStore = stored(() => window.localStorage, 'franzwerk.settings');
+export const legacyMode = stored(() => window.localStorage, 'franzwerk.mode');
 export const memberSession = stored(() => window.localStorage, 'franzwerk.member');
 export const adminSession = stored(() => window.sessionStorage, 'franzwerk.admin');
 
@@ -175,18 +205,27 @@ export async function loginWithPin(userId, pin) {
 // `boot` changes with every server start, so a restored backup (lower rev) is accepted.
 export const isNewer = (next, prev) => !prev || next.boot !== prev.boot || next.rev >= prev.rev;
 
-// Formatting
+// Formatting, in the number style of the page's language (1.585,50 or 1,585.50).
+// Spanish groups 4-digit numbers too (1.585), as on the rest of the page.
 
-const wholeNumber = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
-const withCents = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formats = new Map();
+const format = (options) => {
+  const key = `${locale()}|${JSON.stringify(options)}`;
+  if (!formats.has(key)) formats.set(key, new Intl.NumberFormat(locale(), { useGrouping: 'always', ...options }));
+  return formats.get(key);
+};
 
 export const round2 = (n) => Math.round(n * 100) / 100;
-export const formatNumber = (n) => (Number.isInteger(round2(n)) ? wholeNumber : withCents).format(round2(n));
+export const formatNumber = (n) => format(Number.isInteger(round2(n)) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(round2(n));
 export const formatEuro = (n) => `${formatNumber(n)}\u00a0€`;
-export const countBids = (n) => (n === 1 ? '1 Gebot' : `${n} Gebote`);
-export const formatHours = (n) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(n);
+export const countBids = (n) => t('count.bids', { count: n, n: formatNumber(n) });
+export const formatHours = (n) => format({ maximumFractionDigits: 1 }).format(n);
 // The total of all bids and the Bedarf are shown in whole euros; the server keeps the cents.
-export const formatWhole = (n) => wholeNumber.format(Math.round(n));
+export const formatWhole = (n) => format({ maximumFractionDigits: 0 }).format(Math.round(n));
+
+// The decimal and grouping signs of the page's language, for typing amounts.
+export const decimalSign = () => (language() === 'en' ? '.' : ',');
+export const groupSign = () => (language() === 'en' ? ',' : '.');
 
 // Amounts are stored, sent and summed netto. Brutto is only a display option.
 export const VAT_PERCENT = 19;
@@ -201,26 +240,15 @@ export const inMode = (net, mode) => (mode === 'brutto' ? toGross(net) : net);
 export const ownGross = (me) => (typeof me.contributionGross === 'number' ? me.contributionGross : toGross(me.contribution));
 export const totalGross = (s) => (typeof s.totalRaisedGross === 'number' ? s.totalRaisedGross : toGross(s.totalRaised));
 
-// Netto or brutto display, stored per device. Default is netto.
-export function useAmountMode(key) {
-  const store = useMemo(() => stored(() => window.localStorage, key), [key]);
-  const [mode, setMode] = useState(() => (store.get() === 'brutto' ? 'brutto' : 'netto'));
-  const toggle = useCallback(() => {
-    const next = mode === 'brutto' ? 'netto' : 'brutto';
-    store.set(next);
-    setMode(next);
-  }, [mode, store]);
-  return [mode, toggle];
-}
-
 // "Müller" is found when searching "muller".
 export const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('de');
 export const byName = (a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' });
 
-// Accepts "6500", "6.500", "6500,50", "12.50" and "1.234,56 €".
+// Accepts "6500", "6.500", "6500,50", "12.50" and "1.234,56 €"; in English also "1,234.56".
 export function parseAmount(input) {
   let s = String(input).replace(/[€\s\u00a0]/g, '');
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s) && language() === 'en') s = s.replace(/,/g, '');
   else s = s.replace(',', '.');
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
 }

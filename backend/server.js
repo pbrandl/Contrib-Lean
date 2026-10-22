@@ -98,13 +98,21 @@ app.use((req, res, next) => (req.path === IMPORT_PATH ? next() : smallJson(req, 
 // Uberspace forwards /api with the full path, so all routes live under /api.
 const api = express.Router();
 
+// `code` and `params` let the page show the message in its own language (frontend/src/i18n);
+// `message` is the German text for older pages and the log.
 class HttpError extends Error {
-  constructor(status, message, retryAfterMs) {
+  constructor(status, message, retryAfterMs, code, params) {
     super(message);
     this.status = status;
     this.retryAfterMs = retryAfterMs;
+    this.code = code;
+    this.params = params;
   }
 }
+
+// Where in an import file: "Zeile 3" (CSV) or "Eintrag 2" (JSON), also as params for the page.
+const whereText = (where) => (where ? `${where.line ? `Zeile ${where.line}` : `Eintrag ${where.entry}`}: ` : '');
+const FIELD_LABELS = { bid: 'Der Beitrag', amount: 'Der Betrag', gross: 'Der Bruttobetrag', target: 'Der Bedarf', hours: 'Die Stunden' };
 
 // Express 4 does not catch rejected promises, so async handlers are wrapped.
 const handle = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -116,9 +124,9 @@ const sameName = (a, b) => nameKey(a) === nameKey(b);
 const formatAmount = (n) => n.toLocaleString('de-DE');
 const own = (object, key) => (Object.prototype.hasOwnProperty.call(object, key) ? object[key] : undefined);
 
-function requirePin(pin, where = '') {
+function requirePin(pin, where = null) {
   if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
-    throw new HttpError(400, `${where ? `${where}: ` : ''}Die PIN muss aus 4 bis 8 Ziffern bestehen.`);
+    throw new HttpError(400, `${whereText(where)}Die PIN muss aus 4 bis 8 Ziffern bestehen.`, 0, 'pin_format', { where });
   }
   return pin;
 }
@@ -127,10 +135,10 @@ function requirePin(pin, where = '') {
 // removed: nobody can add a look-alike of an existing name.
 const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/g;
 
-function requireName(name, where = '') {
+function requireName(name, where = null) {
   const clean = typeof name === 'string' ? name.normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim() : '';
   if (!clean || clean.length > MAX_NAME_LENGTH) {
-    throw new HttpError(400, `${where ? `${where}: ` : ''}Bitte gib einen Namen mit höchstens ${MAX_NAME_LENGTH} Zeichen ein.`);
+    throw new HttpError(400, `${whereText(where)}Bitte gib einen Namen mit höchstens ${MAX_NAME_LENGTH} Zeichen ein.`, 0, 'name_format', { where, max: MAX_NAME_LENGTH });
   }
   return clean;
 }
@@ -145,18 +153,19 @@ function toNumber(value, comma = false) {
 }
 
 // Hours per month a member can contribute, with one decimal.
-function requireHours(value, label = 'Die Stunden') {
+function requireHours(value, where = null) {
   const n = toNumber(value, true);
   if (!Number.isFinite(n) || n < 0 || n > MAX_HOURS) {
-    throw new HttpError(400, `${label} müssen zwischen 0 und ${MAX_HOURS} liegen.`);
+    throw new HttpError(400, `${whereText(where)}${FIELD_LABELS.hours} müssen zwischen 0 und ${MAX_HOURS} liegen.`, 0, 'hours_range', { where, max: MAX_HOURS });
   }
   return Math.round(n * 10) / 10;
 }
 
-function requireAmount(value, label) {
+// `field`: bid, amount, gross or target (FIELD_LABELS).
+function requireAmount(value, field, where = null) {
   const n = toNumber(value);
   if (!Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) {
-    throw new HttpError(400, `${label} muss eine Zahl zwischen 0 und ${formatAmount(MAX_AMOUNT)} sein.`);
+    throw new HttpError(400, `${whereText(where)}${FIELD_LABELS[field]} muss eine Zahl zwischen 0 und ${formatAmount(MAX_AMOUNT)} sein.`, 0, 'amount_range', { where, field, max: MAX_AMOUNT });
   }
   return round2(n);
 }
@@ -406,10 +415,10 @@ function authenticate(role) {
   return handle(async (req, res, next) => {
     const header = req.get('Authorization') || '';
     const session = readSession(header.startsWith('Bearer ') ? header.slice(7) : '');
-    if (!session || session.role !== role) throw new HttpError(401, 'Bitte melde dich neu an.');
+    if (!session || session.role !== role) throw new HttpError(401, 'Bitte melde dich neu an.', 0, 'session_expired');
     const data = await readDatabase();
     const user = data.users.find(u => u.id === session.uid);
-    if (!user || user.pinVersion !== session.pv) throw new HttpError(401, 'Bitte melde dich neu an.');
+    if (!user || user.pinVersion !== session.pv) throw new HttpError(401, 'Bitte melde dich neu an.', 0, 'session_expired');
     req.user = user;
     req.data = data;
     next();
@@ -418,7 +427,7 @@ function authenticate(role) {
 
 function findUserOrLogout(data, userId) {
   const user = data.users.find(u => u.id === userId);
-  if (!user) throw new HttpError(401, 'Bitte melde dich neu an.');
+  if (!user) throw new HttpError(401, 'Bitte melde dich neu an.', 0, 'session_expired');
   return user;
 }
 
@@ -513,7 +522,7 @@ function assertDeviceAllowed(key) {
   const now = Date.now();
   const entry = deviceFailures.get(key);
   if (entry && entry.lockedUntil > now) {
-    throw new HttpError(429, waitMessage(entry.lockedUntil - now), entry.lockedUntil - now);
+    throw new HttpError(429, waitMessage(entry.lockedUntil - now), entry.lockedUntil - now, 'device_locked', { wait: entry.lockedUntil - now });
   }
 }
 
@@ -531,7 +540,7 @@ function takeAttempt(userId, network) {
     const message = isAdminId(userId)
       ? `Für das Admin-Konto gab es zu viele Fehlversuche. Auf neuen Geräten geht die Anmeldung erst in ${waitText(waitMs)} wieder. Melde dich auf einem Gerät an, auf dem du schon einmal als Admin angemeldet warst.`
       : `Für dieses Konto gab es zu viele Fehlversuche. Auf neuen Geräten geht die Anmeldung erst in ${waitText(waitMs)} wieder. Melde dich auf einem Gerät an, auf dem du schon einmal angemeldet warst, oder lass dir von einem Admin eine neue PIN setzen.`;
-    throw new HttpError(429, message, waitMs);
+    throw new HttpError(429, message, waitMs, 'account_locked', { wait: waitMs, admin: isAdminId(userId) });
   }
   local.tokens -= 1;
   if (global) global.tokens -= 1;
@@ -555,11 +564,11 @@ function registerFailedLogin(key) {
   deviceFailures.set(key, entry);
   if (entry.count < LOCK_AFTER) {
     const left = LOCK_AFTER - entry.count;
-    return `PIN falsch. Noch ${left} ${left === 1 ? 'Versuch' : 'Versuche'}, dann wird die Anmeldung kurz gesperrt.`;
+    return new HttpError(401, `PIN falsch. Noch ${left} ${left === 1 ? 'Versuch' : 'Versuche'}, dann wird die Anmeldung kurz gesperrt.`, 0, 'wrong_pin', { left });
   }
   const lockMs = Math.min(MAX_LOCK_MS, 60 * 1000 * 2 ** (entry.count - LOCK_AFTER));
   entry.lockedUntil = now + lockMs;
-  return `PIN falsch. ${waitMessage(lockMs)}`;
+  return new HttpError(401, `PIN falsch. ${waitMessage(lockMs)}`, 0, 'wrong_pin_locked', { wait: lockMs });
 }
 
 // A new PIN from the admin lifts every lock on that account and refills its budgets.
@@ -595,12 +604,12 @@ async function withPinSlot(req, trusted, fn) {
     const waiting = waitingPinChecks.trusted.length + waitingPinChecks.other.length;
     const queue = trusted ? waitingPinChecks.trusted : waitingPinChecks.other;
     if (queue.length >= MAX_WAITING_PIN_CHECKS || ((waiting + 1) * scryptMs) / MAX_PARALLEL_PIN_CHECKS > MAX_PIN_WAIT_MS) {
-      throw new HttpError(503, 'Gerade melden sich sehr viele gleichzeitig an. Versuche es in ein paar Sekunden noch einmal.', 5000);
+      throw new HttpError(503, 'Gerade melden sich sehr viele gleichzeitig an. Versuche es in ein paar Sekunden noch einmal.', 5000, 'login_busy');
     }
     await new Promise(resolve => queue.push({ resolve, trusted }));
   }
   try {
-    if (req.socket && req.socket.destroyed) throw new HttpError(499, 'Abgebrochen.');
+    if (req.socket && req.socket.destroyed) throw new HttpError(499, 'Abgebrochen.', 0, 'aborted');
     const started = Date.now();
     const result = await fn();
     scryptMs = scryptMs * 0.8 + (Date.now() - started) * 0.2;
@@ -707,12 +716,12 @@ api.get('/public', handle(async (req, res) => {
 
 api.post('/login', handle(async (req, res) => {
   const { userId, pin, device, trust } = req.body || {};
-  if (typeof userId !== 'string' || !userId) throw new HttpError(400, 'Ungültige Anfrage.');
+  if (typeof userId !== 'string' || !userId) throw new HttpError(400, 'Ungültige Anfrage.', 0, 'bad_request');
   requirePin(pin); // can never match: no scrypt, no failure
   const data = await readDatabase();
   const user = data.users.find(u => u.id === userId);
   if (!user) {
-    throw new HttpError(404, 'Diesen Namen gibt es nicht mehr. Lade die Seite neu.');
+    throw new HttpError(404, 'Diesen Namen gibt es nicht mehr. Lade die Seite neu.', 0, 'name_gone');
   }
 
   // Everything that turns an attempt down runs before scrypt.
@@ -722,7 +731,7 @@ api.post('/login', handle(async (req, res) => {
   assertDeviceAllowed(key);
   // One check at a time per device and account, so parallel requests cannot pass the lock.
   if (loginsInFlight.has(key)) {
-    throw new HttpError(429, 'Die letzte Anmeldung wird noch geprüft. Versuche es gleich noch einmal.', 2000);
+    throw new HttpError(429, 'Die letzte Anmeldung wird noch geprüft. Versuche es gleich noch einmal.', 2000, 'login_pending');
   }
   // A trusted device that typed LOCK_AFTER wrong PINs in a row counts as new until its next right PIN.
   const recent = deviceFailures.get(key);
@@ -740,10 +749,10 @@ api.post('/login', handle(async (req, res) => {
     loginsInFlight.delete(key);
   }
   if (!ok) {
-    const message = registerFailedLogin(key);
+    const failure = registerFailedLogin(key);
     console.log(`[login] wrong PIN for ${user.id} from ${req.ip}${deviceId ? ` device ${deviceId.slice(0, 6)}` : ''}${trusted ? ' (trusted)' : ''}`);
     await audit('login_failed', { userId: user.id, trusted, ...requestInfo(req) });
-    throw new HttpError(401, message);
+    throw failure;
   }
   returnAttempt(taken);
   deviceFailures.delete(key);
@@ -767,7 +776,7 @@ function limitWrites(req, res, next) {
   budget.at = now;
   writeBudgets.set(req.user.id, budget);
   if (budget.tokens < 1) {
-    next(new HttpError(429, 'Zu viele Änderungen auf einmal. Warte einen Moment.', WRITE_LIMIT.refillMs));
+    next(new HttpError(429, 'Zu viele Änderungen auf einmal. Warte einen Moment.', WRITE_LIMIT.refillMs, 'too_many_writes'));
     return;
   }
   budget.tokens -= 1;
@@ -783,8 +792,8 @@ api.get('/me', memberOnly, handle(async (req, res) => {
 // Setting the same amount twice changes nothing, so a page may simply send it again.
 api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
   const body = req.body || {};
-  const gross = body.gross !== undefined ? requireAmount(body.gross, 'Der Beitrag') : 0;
-  const amount = body.gross !== undefined ? toNet(gross) : requireAmount(body.amount, 'Der Beitrag');
+  const gross = body.gross !== undefined ? requireAmount(body.gross, 'bid') : 0;
+  const amount = body.gross !== undefined ? toNet(gross) : requireAmount(body.amount, 'bid');
   const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
     const from = data.contributions[user.id] || 0;
@@ -842,7 +851,7 @@ api.post('/admin/users', adminOnly, handle(async (req, res) => {
   const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     if (data.users.some(u => !isAdminId(u.id) && sameName(u.name, name))) {
-      throw new HttpError(409, `„${name}“ ist schon eingetragen.`);
+      throw new HttpError(409, `„${name}“ ist schon eingetragen.`, 0, 'name_taken', { name });
     }
     const nextId = idGenerator(id => data.users.some(u => u.id === id));
     const user = { id: nextId(), name };
@@ -859,10 +868,10 @@ api.post('/admin/users', adminOnly, handle(async (req, res) => {
 
 api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
   const { userId } = req.params;
-  if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto kann nicht gelöscht werden.');
+  if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto kann nicht gelöscht werden.', 0, 'admin_not_deletable');
   const { data } = await mutate((data, log) => {
     const user = data.users.find(u => u.id === userId);
-    if (!user) throw new HttpError(404, 'Dieses Mitglied ist schon gelöscht.');
+    if (!user) throw new HttpError(404, 'Dieses Mitglied ist schon gelöscht.', 0, 'member_deleted');
     const contribution = own(data.contributions, userId) || 0;
     const hours = own(data.hours, userId) || 0;
     data.users = data.users.filter(u => u.id !== userId);
@@ -882,7 +891,7 @@ api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
   const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
     const user = data.users.find(u => u.id === req.params.userId);
-    if (!user) throw new HttpError(404, 'Dieses Mitglied gibt es nicht mehr.');
+    if (!user) throw new HttpError(404, 'Dieses Mitglied gibt es nicht mehr.', 0, 'member_gone');
     await setPin(user, pin, { hash });
     log('pin_changed', { userId: user.id, by: 'admin', ...requestInfo(req) });
     return user;
@@ -896,9 +905,38 @@ api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
   });
 }));
 
+// Change a member: the name, the PIN or both, in one write. A new PIN ends the member's
+// sessions and lifts their login locks, like PUT .../pin.
+api.patch('/admin/users/:userId', adminOnly, handle(async (req, res) => {
+  const { userId } = req.params;
+  const body = req.body || {};
+  if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto lässt sich hier nicht ändern.', 0, 'admin_not_editable');
+  const name = body.name !== undefined ? requireName(body.name) : null;
+  const pin = body.pin !== undefined && body.pin !== '' ? requirePin(body.pin) : null;
+  if (name === null && pin === null) throw new HttpError(400, 'Ungültige Anfrage.', 0, 'bad_request');
+  const hash = pin ? await hashPinLimited(req, pin) : null;
+  const { data } = await mutate(async (data, log) => {
+    const user = data.users.find(u => u.id === userId);
+    if (!user) throw new HttpError(404, 'Dieses Mitglied gibt es nicht mehr.', 0, 'member_gone');
+    if (name !== null && name !== user.name) {
+      if (data.users.some(u => u.id !== userId && !isAdminId(u.id) && sameName(u.name, name))) {
+        throw new HttpError(409, `„${name}“ ist schon eingetragen.`, 0, 'name_taken', { name });
+      }
+      log('user_renamed', { userId, from: user.name, to: name, ...requestInfo(req) });
+      user.name = name;
+    }
+    if (pin) {
+      await setPin(user, pin, { hash });
+      log('pin_changed', { userId, by: 'admin', ...requestInfo(req) });
+    }
+  });
+  if (pin) clearFailedLogins(userId);
+  res.json(adminView(data));
+}));
+
 api.put('/admin/target', adminOnly, handle(async (req, res) => {
-  const targetAmount = requireAmount(req.body && req.body.targetAmount, 'Der Bedarf');
-  if (targetAmount <= 0) throw new HttpError(400, 'Der Bedarf muss größer als 0 sein.');
+  const targetAmount = requireAmount(req.body && req.body.targetAmount, 'target');
+  if (targetAmount <= 0) throw new HttpError(400, 'Der Bedarf muss größer als 0 sein.', 0, 'target_positive');
   const { data } = await mutate((data, log) => {
     log('target_changed', { from: data.targetAmount, to: targetAmount, ...requestInfo(req) });
     data.targetAmount = targetAmount;
@@ -930,21 +968,21 @@ const usableId = (id) => ID_PATTERN.test(id) && !isAdminId(id) && !(id in Object
 
 api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
   const body = req.body || {};
-  if (!Array.isArray(body.users)) throw new HttpError(400, 'Die Datei enthält keine Mitgliederliste.');
+  if (!Array.isArray(body.users)) throw new HttpError(400, 'Die Datei enthält keine Mitgliederliste.', 0, 'import_no_list');
   if (body.users.length > MAX_IMPORT_ENTRIES) {
-    throw new HttpError(400, `Die Datei enthält mehr als ${MAX_IMPORT_ENTRIES} Einträge.`);
+    throw new HttpError(400, `Die Datei enthält mehr als ${MAX_IMPORT_ENTRIES} Einträge.`, 0, 'import_too_many', { max: MAX_IMPORT_ENTRIES });
   }
   const contributionsIn = body.contributions && typeof body.contributions === 'object' ? body.contributions : {};
   const grossIn = body.contributionsGross && typeof body.contributionsGross === 'object' ? body.contributionsGross : {};
   const enteredAsIn = body.enteredAs && typeof body.enteredAs === 'object' ? body.enteredAs : {};
   const hoursIn = body.hours && typeof body.hours === 'object' ? body.hours : {};
   const hasTarget = body.targetAmount !== undefined && body.targetAmount !== null && body.targetAmount !== '';
-  const targetAmount = hasTarget ? requireAmount(body.targetAmount, 'Der Bedarf') : null;
+  const targetAmount = hasTarget ? requireAmount(body.targetAmount, 'target') : null;
 
   const entries = body.users
     .filter(u => u && !isAdminId(u.id))
     .map((u, i) => {
-      const where = Number.isInteger(u.line) ? `Zeile ${u.line}` : `Eintrag ${i + 1}`;
+      const where = Number.isInteger(u.line) ? { line: u.line } : { entry: i + 1 };
       const id = u.id !== undefined && u.id !== null ? String(u.id) : '';
       const pinGiven = u.pin !== undefined && u.pin !== null && u.pin !== '';
       const rawAmount = u.contribution !== undefined ? u.contribution : own(contributionsIn, id);
@@ -955,21 +993,25 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
       const enteredAs = u.enteredAs !== undefined ? u.enteredAs : own(enteredAsIn, id);
       const rawGross = u.contributionGross !== undefined ? u.contributionGross : own(grossIn, id);
       const gross = enteredAs === 'brutto' && rawGross !== undefined && rawGross !== null && rawGross !== ''
-        ? requireAmount(rawGross, `${where}: Der Bruttobetrag`)
+        ? requireAmount(rawGross, 'gross', where)
         : 0;
       return {
         where,
         id: usableId(id) ? id : null,
         name: requireName(u.name, where),
         pin: pinGiven ? requirePin(String(u.pin), where) : null,
-        contribution: gross > 0 ? toNet(gross) : amountGiven ? requireAmount(rawAmount, `${where}: Der Betrag`) : 0,
+        contribution: gross > 0 ? toNet(gross) : amountGiven ? requireAmount(rawAmount, 'amount', where) : 0,
         gross,
-        hours: hoursGiven ? requireHours(rawHours, `${where}: Die Stunden`) : 0
+        hours: hoursGiven ? requireHours(rawHours, where) : 0
       };
     });
   entries.forEach((entry, i) => {
     const twin = entries.findIndex(other => sameName(other.name, entry.name));
-    if (twin !== i) throw new HttpError(400, `„${entry.name}“ steht doppelt in der Datei (${entries[twin].where} und ${entry.where}).`);
+    if (twin !== i) {
+      const first = whereText(entries[twin].where).slice(0, -2);
+      throw new HttpError(400, `„${entry.name}“ steht doppelt in der Datei (${first} und ${whereText(entry.where).slice(0, -2)}).`, 0,
+        'import_duplicate', { name: entry.name, first: entries[twin].where, second: entry.where });
+    }
   });
 
   const { data, result } = await mutate(async (data, log) => {
@@ -1022,7 +1064,7 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
 }));
 
 api.use((req, res) => {
-  res.status(404).json({ error: 'Unbekannte Adresse.' });
+  res.status(404).json({ error: 'Unbekannte Adresse.', code: 'unknown_route' });
 });
 
 app.use('/api', api);
@@ -1030,19 +1072,21 @@ app.use('/api', api);
 app.use((err, req, res, next) => {
   if (err instanceof HttpError) {
     if (err.retryAfterMs) res.set('Retry-After', String(Math.ceil(err.retryAfterMs / 1000)));
-    return res.status(err.status).json({ error: err.message });
+    return res.status(err.status).json({ error: err.message, code: err.code, params: err.params });
   }
   if (err.type === 'entity.too.large') {
-    return res.status(413).json({ error: req.path === IMPORT_PATH ? 'Die Datei ist zu groß.' : 'Ungültige Anfrage.' });
+    return req.path === IMPORT_PATH
+      ? res.status(413).json({ error: 'Die Datei ist zu groß.', code: 'file_too_large' })
+      : res.status(413).json({ error: 'Ungültige Anfrage.', code: 'bad_request' });
   }
   // Other client errors (broken JSON, unknown charset, aborted upload, malformed URL):
   // a short answer and no stack trace in the log.
   const status = err.status || err.statusCode;
   if (status >= 400 && status < 500) {
-    return res.status(status).json({ error: 'Ungültige Anfrage.' });
+    return res.status(status).json({ error: 'Ungültige Anfrage.', code: 'bad_request' });
   }
   console.error('Unexpected error:', err);
-  res.status(500).json({ error: 'Serverfehler. Bitte versuche es noch einmal.' });
+  res.status(500).json({ error: 'Serverfehler. Bitte versuche es noch einmal.', code: 'server_error' });
 });
 
 // Start server

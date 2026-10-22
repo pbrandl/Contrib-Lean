@@ -11,14 +11,14 @@ So läuft ein Update ab:
 - Jeden Befehl einzeln kopieren und mit Enter abschicken. Nie mehrere Befehle in eine Zeile setzen.
 - `rsync --delete` nur mit vollständigem Quell- und Zielpfad, so wie unten, und nie zusammen mit anderen Befehlen. Ein Tippfehler macht sonst aus dem letzten Wort das Ziel, und `--delete` leert diesen Ordner.
 
-Die Befehle unten sind für Version 1 (`v1`). Für eine spätere Version überall `v1` durch den neuen Namen ersetzen, zum Beispiel `v1.1`.
+Die Befehle unten sind für Version 2 (`v2`). Für eine spätere Version überall `v2` durch den neuen Namen ersetzen, zum Beispiel `v2.1`.
 
 ## 0. Auf deinem Rechner: das Zip hochladen
 
 Im Ordner, in dem das Zip liegt (meist `~/Downloads`):
 
 ```bash
-scp fundraiser-app-v1.zip franz@antila.uberspace.de:~/
+scp fundraiser-app-v2.zip franz@antila.uberspace.de:~/
 ```
 
 Dann einloggen:
@@ -42,39 +42,47 @@ cd ~
 ```
 
 ```bash
-ls -d ~/fundraiser-app-v1 ~/fundraiser-app-vor-v1
+ls -d ~/fundraiser-app-v2 ~/fundraiser-app-vor-v2
 ```
 
-Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v1` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v1` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v1`, bitte nicht weitermachen und melden.
+Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v2` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v2` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v2`, bitte nicht weitermachen und melden.
 
 ```bash
-unzip -q ~/fundraiser-app-v1.zip -d ~
+unzip -q ~/fundraiser-app-v2.zip -d ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v1
+ls ~/fundraiser-app-v2
 ```
 
 Dort müssen unter anderem `backend`, `frontend` und `DEPLOY.md` stehen.
 
 ## 3. Pakete übernehmen
 
-Die Paketversionen sind dieselben wie bisher, deshalb werden sie kopiert statt neu geladen:
+Im Backend sind die Pakete dieselben wie bisher, sie werden kopiert:
 
 ```bash
-cp -a ~/fundraiser-app/backend/node_modules ~/fundraiser-app-v1/backend/
+cp -a ~/fundraiser-app/backend/node_modules ~/fundraiser-app-v2/backend/
+```
+
+Das Frontend hat in Version 2 ein neues Paket (für Excel-Dateien), deshalb werden seine Pakete neu geladen:
+
+```bash
+cd ~/fundraiser-app-v2/frontend
 ```
 
 ```bash
-cp -a ~/fundraiser-app/frontend/node_modules ~/fundraiser-app-v1/frontend/
+npm ci
 ```
 
-(Hat sich in einer späteren Version eine `package-lock.json` geändert, steht das im `CHANGELOG.md`. Dann stattdessen im jeweiligen neuen Ordner `npm ci` ausführen.)
+Das dauert ein bis drei Minuten. Am Ende steht `added … packages`. Hinweise wie `npm warn deprecated` oder `vulnerabilities` sind normal und kein Fehler.
+
+(Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`.)
 
 ## 4. Testen und bauen
 
 ```bash
-cd ~/fundraiser-app-v1/backend
+cd ~/fundraiser-app-v2/backend
 ```
 
 ```bash
@@ -84,7 +92,7 @@ node test.js /nonexistent
 Das dauert etwa eine Minute und gibt viele Zeilen aus, darunter Hunderte `[login] wrong PIN …`: Die Tests probieren absichtlich falsche PINs. Am Ende muss `0 failed` stehen. Die Tests laufen mit einer eigenen, leeren Test-Datenbank und berühren die echten Daten nicht.
 
 ```bash
-cd ~/fundraiser-app-v1/frontend
+cd ~/fundraiser-app-v2/frontend
 ```
 
 ```bash
@@ -95,14 +103,14 @@ Hier muss `Compiled successfully.` stehen.
 
 ## 5. Umschalten
 
-Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Offene Seiten zeigen so lange „Gleich wieder da“ und laufen danach von selbst weiter (ab Version 1; beim Einspielen von Version 1 selbst zeigen die alten Seiten noch eine Fehlermeldung). Wer genau dann speichert, speichert danach einfach noch einmal.
+Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Offene Seiten zeigen so lange „Gleich wieder da“ und laufen danach von selbst weiter. Wer genau dann speichert, speichert danach einfach noch einmal.
 
 ```bash
 cd ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v1/backend
+ls ~/fundraiser-app-v2/backend
 ```
 
 Hier darf **kein** `data` stehen (sonst bitte melden und nicht weitermachen).
@@ -112,15 +120,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v1/backend/
+cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v2/backend/
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-vor-v1
+mv ~/fundraiser-app ~/fundraiser-app-vor-v2
 ```
 
 ```bash
-mv ~/fundraiser-app-v1 ~/fundraiser-app
+mv ~/fundraiser-app-v2 ~/fundraiser-app
 ```
 
 ```bash
@@ -157,7 +165,7 @@ curl -s https://franz.uber.space/api/public | grep -o '"totalRaised":[0-9.]*\|"c
 
 Dieselben Zahlen wie in Schritt 1 (außer jemand hat in der Zwischenzeit geboten).
 
-Dann am Handy die Seite neu laden: Die Mitglieder sind noch angemeldet, Gebote und Stunden stimmen. Einmal abmelden und wieder anmelden: Es kommt der blaue PIN-Bildschirm mit Kästchen und Ziffernblock. Zum Schluss `/admin` öffnen.
+Dann am Handy die Seite neu laden: Die Mitglieder sind noch angemeldet, Gebote und Stunden stimmen. Oben rechts ist jetzt das Zahnrad für die Einstellungen. Zum Schluss `/admin` öffnen, auf ein Mitglied tippen (Name und PIN erscheinen, mit „Abbrechen“ wieder schließen) und einmal exportieren.
 
 ## Zurück zur alten Version
 
@@ -168,15 +176,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-v1-fehler
+mv ~/fundraiser-app ~/fundraiser-app-v2-fehler
 ```
 
 ```bash
-mv ~/fundraiser-app-vor-v1 ~/fundraiser-app
+mv ~/fundraiser-app-vor-v2 ~/fundraiser-app
 ```
 
 ```bash
-cp -a ~/fundraiser-app-v1-fehler/backend/data/. ~/fundraiser-app/backend/data/
+cp -a ~/fundraiser-app-v2-fehler/backend/data/. ~/fundraiser-app/backend/data/
 ```
 
 ```bash
@@ -189,16 +197,16 @@ supervisorctl start fundraiser
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
 ```
 
-Achtung: Wer in der neuen Version eine 7- oder 8-stellige PIN gewählt hat, kommt mit der alten nicht mehr hinein (sie kennt nur 4 bis 6 Ziffern). Für diese Mitglieder im Admin-Bereich eine neue PIN setzen.
+Die alte Version liest alles, was die neue gespeichert hat, auch geänderte Namen und PINs. Sie zeigt aber wieder nur Deutsch und kennt die Einstellungen nicht.
 
 ## Danach
 
 Wenn die neue Version ein paar Tage gut läuft, am besten nach der Bietrunde:
 
 ```bash
-rm -rf ~/fundraiser-app-vor-v1
+rm -rf ~/fundraiser-app-vor-v2
 ```
 
 ```bash
-rm ~/fundraiser-app-v1.zip
+rm ~/fundraiser-app-v2.zip
 ```
