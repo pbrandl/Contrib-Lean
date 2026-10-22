@@ -576,10 +576,11 @@
     align-items: center;
   }
 
+  /* Space between the top row and the name, so the screen does not look crowded. */
   .pin-head {
     display: grid;
     gap: 0.4rem;
-    padding-top: 0.5rem;
+    padding-top: 1.75rem;
   }
 
   /* The lock in front of the name, in one line. Light enough to stand out on the blue. */
@@ -698,7 +699,7 @@
 
   @media (max-height: 700px) {
     .pin-head {
-      padding-top: 0.25rem;
+      padding-top: 1rem;
     }
 
     .pin-lock {
@@ -715,8 +716,15 @@
     }
   }
 
-  /* Short phones (320 pt iPhones in Safari): the keypad keeps rows of 44 px and more. */
-  @media (max-height: 560px) {
+  /* On short screens the keypad needs the space more than the gap above the name. */
+  @media (max-height: 620px) {
+    .pin-head {
+      padding-top: 0.4rem;
+    }
+  }
+
+  /* Short phones (320 pt iPhones, also without Safari bars): the keypad keeps rows of 44 px and more. */
+  @media (max-height: 600px) {
     .pin-lock,
     .pin-head p,
     .pin-foot {

@@ -252,7 +252,8 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 - Touch devices get the page's own keypad (digits, backspace); on computers a visually hidden field (`#pin`, label "PIN") takes the keys, Enter logs in. "Anmelden" is enabled from 4 digits.
 - PINs have 4 to 8 digits (server, app, CSV import and mail script).
 - While the PIN is checked, "Anmelden" stays as it is; only after 0.2 s it shows a spinner. The page start (`LoadingPage`) works the same way: the blue top, and a spinner only after 0.2 s. No "Lädt …" or "Wird geprüft …" texts.
-- It fits on one screen like the bid sheet: on short screens the intro and the hint go away and the keypad shrinks (rows of at least 44 px).
+- Between the top row and the lock/name line there is a clear gap (1.75 rem, less on short screens), for air.
+- It fits on one screen like the bid sheet: below 600 px height the intro and the hint go away (the 561–600 px range used to overflow by about 20 px) and the keypad shrinks (rows of at least 44 px).
 
 ### Banners (whole app: member page, front page and admin)
 
