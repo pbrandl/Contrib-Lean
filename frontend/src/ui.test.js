@@ -34,6 +34,31 @@ test('PIN boxes: a box appears with each digit, the digit shows briefly and beco
   jest.useRealTimers();
 });
 
+test('PIN on computers: the next free box shows a blinking cursor while the field has the focus', () => {
+  window.matchMedia = jest.fn(query => ({ matches: false, media: query }));
+  const { container } = render(<PinLogin title="Anna" onSubmit={jest.fn()} />);
+  const field = screen.getByLabelText('PIN');
+  const cursor = () => container.querySelector('.pin-box-cursor');
+  expect(field).toHaveFocus();
+  expect(container.querySelector('.pin-box-ghost')).toBeNull();
+  expect(cursor()).toHaveClass('focused');
+  expect(cursor().querySelector('.pin-caret')).not.toBeNull();
+
+  fireEvent.change(field, { target: { value: '123' } });
+  expect(container.querySelectorAll('.pin-box.filled')).toHaveLength(3);
+  expect(container.querySelector('.pin-box.active')).toBeNull();
+  expect(container.querySelector('.pin-boxes').lastChild).toBe(cursor());
+
+  act(() => field.blur());
+  expect(cursor()).not.toHaveClass('focused');
+  fireEvent.click(container.querySelector('.pin-boxes'));
+  expect(field).toHaveFocus();
+  expect(cursor()).toHaveClass('focused');
+
+  fireEvent.change(field, { target: { value: '12345678' } });
+  expect(cursor()).toBeNull();
+});
+
 test('busy button: looks the same at first, ignores clicks, shows a spinner only after 0.2 s', () => {
   jest.useFakeTimers();
   const { BusyButton } = require('./ui');

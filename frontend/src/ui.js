@@ -153,7 +153,8 @@ export function PinInput({ id, value, onChange, label, autoFocus = false }) {
 // Login with a PIN on a dark blue screen. Every digit gets its own box, which appears with
 // it: the digit shows briefly, then turns into a dot (the length is not known, so the
 // boxes start left and grow to the right, up to PIN_MAX). Touch devices get the page's own
-// keypad; on computers a hidden field takes the keys. `onSubmit` returns a promise; its
+// keypad; on computers a hidden field takes the keys, and the next free box shows a
+// blinking cursor, so it is clear that you can type. `onSubmit` returns a promise; its
 // error message is shown below the boxes. `back`: a BackButton in the top row.
 export const PIN_MAX = 8;
 const PIN_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'back'];
@@ -165,6 +166,7 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
   const [reveal, setReveal] = useState(-1);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [keypad] = useState(usesKeypad);
   const inputRef = useRef(null);
   const timer = useRef(null);
@@ -189,6 +191,7 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
   };
 
   const press = (key) => change(key === 'back' ? pin.slice(0, -1) : pin + key);
+  const cursor = !keypad && pin.length < PIN_MAX;
 
   const submit = async (e) => {
     if (e) e.preventDefault();
@@ -238,17 +241,26 @@ export function PinLogin({ title, intro, submitLabel, onSubmit, back, children }
           value={pin}
           readOnly={busy}
           onChange={(e) => change(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           className="sr-only"
         />
         <div className="pin-boxes" aria-hidden="true" onClick={() => { if (!keypad && inputRef.current) inputRef.current.focus(); }}>
-          {/* A box appears with its digit, so none stays empty; the newest one has the white
-              edge. Before the first digit an invisible box keeps the row's height. */}
-          {pin.length === 0 && <span className="pin-box pin-box-ghost" />}
+          {/* A box appears with its digit, so none stays empty; with the keypad the newest one
+              has the white edge, and before the first digit an invisible box keeps the row's
+              height. On computers the next free box has the white edge and a blinking cursor
+              instead (keyed by the length, so the blink starts over with every key). */}
+          {pin.length === 0 && !cursor && <span className="pin-box pin-box-ghost" />}
           {Array.from(pin, (digit, i) => (
-            <span key={i} className={`pin-box filled${i === pin.length - 1 ? ' active' : ''}`}>
+            <span key={i} className={`pin-box filled${keypad && i === pin.length - 1 ? ' active' : ''}`}>
               {i === reveal ? digit : <span className="pin-dot" />}
             </span>
           ))}
+          {cursor && (
+            <span key={`cursor-${pin.length}`} className={`pin-box pin-box-cursor${focused && !busy ? ' focused' : ''}`}>
+              <span className="pin-caret" />
+            </span>
+          )}
         </div>
         <p className="pin-error" role="alert">{error}</p>
 
