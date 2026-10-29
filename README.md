@@ -1,6 +1,6 @@
 # Bietrunde – FRANZ!werk Tübingen
 
-Version 2.0.1. Members open https://franz.uber.space, pick their name, log in with their PIN and set
+Version 2.0.2. Members open https://franz.uber.space, pick their name, log in with their PIN and set
 their bid (euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a
 keypad on phones and tablets, a text field on computers. The settings switch the display between
 netto and brutto (× 1.19); sums are always netto, and a bid typed brutto is kept exactly as typed.

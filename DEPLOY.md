@@ -11,14 +11,14 @@ So läuft ein Update ab:
 - Jeden Befehl einzeln kopieren und mit Enter abschicken. Nie mehrere Befehle in eine Zeile setzen.
 - `rsync --delete` nur mit vollständigem Quell- und Zielpfad, so wie unten, und nie zusammen mit anderen Befehlen. Ein Tippfehler macht sonst aus dem letzten Wort das Ziel, und `--delete` leert diesen Ordner.
 
-Die Befehle unten sind für Version 2 (`v2`). Für eine spätere Version überall `v2` durch den neuen Namen ersetzen, zum Beispiel `v2.1`.
+Die Befehle unten sind für Version 2.0.2 (`v2.0.2`). Für eine spätere Version überall `v2.0.2` durch den neuen Namen ersetzen, zum Beispiel `v2.1`.
 
 ## 0. Auf deinem Rechner: das Zip hochladen
 
 Im Ordner, in dem das Zip liegt (meist `~/Downloads`):
 
 ```bash
-scp fundraiser-app-v2.zip franz@antila.uberspace.de:~/
+scp fundraiser-app-v2.0.2.zip franz@antila.uberspace.de:~/
 ```
 
 Dann einloggen:
@@ -42,51 +42,39 @@ cd ~
 ```
 
 ```bash
-ls -d ~/fundraiser-app-v2 ~/fundraiser-app-vor-v2
+ls -d ~/fundraiser-app-v2.0.2 ~/fundraiser-app-vor-v2.0.2
 ```
 
-Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v2` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v2` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v2`, bitte nicht weitermachen und melden.
+Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v2.0.2` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v2.0.2` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v2.0.2`, bitte nicht weitermachen und melden.
 
 ```bash
-unzip -q ~/fundraiser-app-v2.zip -d ~
+unzip -q ~/fundraiser-app-v2.0.2.zip -d ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v2
+ls ~/fundraiser-app-v2.0.2
 ```
 
 Dort müssen unter anderem `backend`, `frontend` und `DEPLOY.md` stehen.
 
-## 3. Pakete laden
+## 3. Pakete übernehmen
 
-Version 2.0.1 bringt Sicherheits-Updates für die Pakete in Backend und Frontend, deshalb werden beide neu geladen:
+Version 2.0.2 hat dieselben Pakete wie 2.0.1, sie werden kopiert:
 
 ```bash
-cd ~/fundraiser-app-v2/backend
+cp -a ~/fundraiser-app/backend/node_modules ~/fundraiser-app-v2.0.2/backend/
 ```
 
 ```bash
-npm ci
+cp -a ~/fundraiser-app/frontend/node_modules ~/fundraiser-app-v2.0.2/frontend/
 ```
 
-Das geht schnell. Dann das Frontend:
-
-```bash
-cd ~/fundraiser-app-v2/frontend
-```
-
-```bash
-npm ci
-```
-
-Das dauert ein bis drei Minuten. Am Ende steht `added … packages`. Hinweise wie `npm warn deprecated` sind normal und kein Fehler: Sie kommen aus dem Build-Werkzeug (react-scripts) und landen nicht in der App. `npm audit` meldet im Frontend danach noch einige Lücken, alle im Build-Werkzeug: die hohen im Entwicklungs-Server (`npm start`), der auf dem Server nie läuft, die übrigen niedrig und ohne verfügbare Korrektur. Im Backend meldet `npm audit` keine.
-
-(Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`.)
+(Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`. Nach `npm ci` sind Hinweise wie `npm warn deprecated` normal; sie kommen aus dem Build-Werkzeug react-scripts und landen nicht in der App. `npm audit` meldet im Frontend Lücken im Build-Werkzeug, siehe 2.0.1 im `CHANGELOG.md`, im Backend keine.)
 
 ## 4. Testen und bauen
 
 ```bash
-cd ~/fundraiser-app-v2/backend
+cd ~/fundraiser-app-v2.0.2/backend
 ```
 
 ```bash
@@ -96,7 +84,7 @@ node test.js /nonexistent
 Das dauert etwa eine Minute und gibt viele Zeilen aus, darunter Hunderte `[login] wrong PIN …`: Die Tests probieren absichtlich falsche PINs. Am Ende muss `0 failed` stehen. Die Tests laufen mit einer eigenen, leeren Test-Datenbank und berühren die echten Daten nicht.
 
 ```bash
-cd ~/fundraiser-app-v2/frontend
+cd ~/fundraiser-app-v2.0.2/frontend
 ```
 
 ```bash
@@ -114,7 +102,7 @@ cd ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v2/backend
+ls ~/fundraiser-app-v2.0.2/backend
 ```
 
 Hier darf **kein** `data` stehen (sonst bitte melden und nicht weitermachen).
@@ -124,15 +112,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v2/backend/
+cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v2.0.2/backend/
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-vor-v2
+mv ~/fundraiser-app ~/fundraiser-app-vor-v2.0.2
 ```
 
 ```bash
-mv ~/fundraiser-app-v2 ~/fundraiser-app
+mv ~/fundraiser-app-v2.0.2 ~/fundraiser-app
 ```
 
 ```bash
@@ -180,15 +168,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-v2-fehler
+mv ~/fundraiser-app ~/fundraiser-app-v2.0.2-fehler
 ```
 
 ```bash
-mv ~/fundraiser-app-vor-v2 ~/fundraiser-app
+mv ~/fundraiser-app-vor-v2.0.2 ~/fundraiser-app
 ```
 
 ```bash
-cp -a ~/fundraiser-app-v2-fehler/backend/data/. ~/fundraiser-app/backend/data/
+cp -a ~/fundraiser-app-v2.0.2-fehler/backend/data/. ~/fundraiser-app/backend/data/
 ```
 
 ```bash
@@ -201,16 +189,16 @@ supervisorctl start fundraiser
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
 ```
 
-Die alte Version liest alles, was die neue gespeichert hat, auch geänderte Namen und PINs. Sie zeigt aber wieder nur Deutsch und kennt die Einstellungen nicht.
+Die alte Version liest alles, was die neue gespeichert hat. Von 2.0.2 zurück auf 2.0.1 ändert sich nur die PIN-Eingabe am Computer.
 
 ## Danach
 
 Wenn die neue Version ein paar Tage gut läuft, am besten nach der Bietrunde:
 
 ```bash
-rm -rf ~/fundraiser-app-vor-v2
+rm -rf ~/fundraiser-app-vor-v2.0.2
 ```
 
 ```bash
-rm ~/fundraiser-app-v2.zip
+rm ~/fundraiser-app-v2.0.2.zip
 ```

@@ -1,5 +1,11 @@
 # Änderungen
 
+## 2.0.2 – 29.10.2026
+
+Keine neuen Pakete: beim Einspielen `node_modules` in beiden Ordnern kopieren (siehe `DEPLOY.md`).
+
+- PIN-Eingabe am Computer: Das nächste freie Kästchen ist immer da, mit weißem Rand und blinkendem Eingabestrich. Vorher stand vor der ersten Ziffer gar kein Kästchen da, und es war nicht zu sehen, dass man tippen kann. Am Handy bleibt alles wie bisher.
+
 ## 2.0.1 – 29.10.2026
 
 Sicherheits-Updates der Pakete, die App selbst ist unverändert. Beim Einspielen in **beiden** Ordnern (`backend` und `frontend`) `npm ci` ausführen (siehe `DEPLOY.md`).
