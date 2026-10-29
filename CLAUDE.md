@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
 - `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
+  react-scripts is unmaintained: vulnerable sub-packages of it are pinned to fixed versions in `overrides` in `frontend/package.json`. After an update, check `npm audit` in both folders; what remains open is listed in `CHANGELOG.md` (2.0.1).
 
 User-facing text exists in German (main language, "du"), English and Spanish, all in `frontend/src/i18n/{de,en,es}.js`; never write a visible text into a component. Server errors carry a `code` and `params` (`HttpError(status, message, retryAfterMs, code, params)`), and the frontend shows `errors.<code>` in the page's language; the German `message` stays for the log and older pages. Code and comments are in English.
 

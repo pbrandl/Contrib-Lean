@@ -1,5 +1,13 @@
 # Änderungen
 
+## 2.0.1 – 29.10.2026
+
+Sicherheits-Updates der Pakete, die App selbst ist unverändert. Beim Einspielen in **beiden** Ordnern (`backend` und `frontend`) `npm ci` ausführen (siehe `DEPLOY.md`).
+
+- Backend: `body-parser` 1.20.9 (in Express), schließt eine Lücke, mit der sich der Server durch präparierte Anfragen lahmlegen ließ.
+- Frontend: React 19.3, aktuelle Versionen der übrigen Pakete. Das Build-Werkzeug (react-scripts 5) wird nicht mehr gepflegt; seine verwundbaren Unterpakete (postcss, nth-check, svgo, serialize-javascript, underscore, uuid, @tootallnate/once) sind über `overrides` in `frontend/package.json` auf korrigierte Versionen gesetzt. Offen bleiben Meldungen für den Entwicklungs-Server (nur `npm start`) und niedrige ohne Korrektur (`deepmerge`).
+- Neu: `docs/beispieldaten.csv`, 24 ausgedachte Mitglieder (dieselben wie in der Demo) mit PIN 1234, zum Vorführen über den Import.
+
 ## 2.0.0 – 22.10.2026
 
 Neues Paket im Frontend (`fflate`, für Excel-Dateien): Beim Einspielen im Ordner `frontend` `npm ci` ausführen statt `node_modules` zu kopieren (siehe `DEPLOY.md`). Das Backend hat keine neuen Pakete.

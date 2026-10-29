@@ -57,15 +57,19 @@ ls ~/fundraiser-app-v2
 
 Dort müssen unter anderem `backend`, `frontend` und `DEPLOY.md` stehen.
 
-## 3. Pakete übernehmen
+## 3. Pakete laden
 
-Im Backend sind die Pakete dieselben wie bisher, sie werden kopiert:
+Version 2.0.1 bringt Sicherheits-Updates für die Pakete in Backend und Frontend, deshalb werden beide neu geladen:
 
 ```bash
-cp -a ~/fundraiser-app/backend/node_modules ~/fundraiser-app-v2/backend/
+cd ~/fundraiser-app-v2/backend
 ```
 
-Das Frontend hat in Version 2 ein neues Paket (für Excel-Dateien), deshalb werden seine Pakete neu geladen:
+```bash
+npm ci
+```
+
+Das geht schnell. Dann das Frontend:
 
 ```bash
 cd ~/fundraiser-app-v2/frontend
@@ -75,7 +79,7 @@ cd ~/fundraiser-app-v2/frontend
 npm ci
 ```
 
-Das dauert ein bis drei Minuten. Am Ende steht `added … packages`. Hinweise wie `npm warn deprecated` oder `vulnerabilities` sind normal und kein Fehler.
+Das dauert ein bis drei Minuten. Am Ende steht `added … packages`. Hinweise wie `npm warn deprecated` sind normal und kein Fehler: Sie kommen aus dem Build-Werkzeug (react-scripts) und landen nicht in der App. `npm audit` meldet im Frontend danach noch einige Lücken, alle im Build-Werkzeug: die hohen im Entwicklungs-Server (`npm start`), der auf dem Server nie läuft, die übrigen niedrig und ohne verfügbare Korrektur. Im Backend meldet `npm audit` keine.
 
 (Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`.)
 
