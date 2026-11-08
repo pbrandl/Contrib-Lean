@@ -1,0 +1,5 @@
+node_modules/
+frontend/build/
+backend/data/
+*.zip
+frontend/build-demo/
