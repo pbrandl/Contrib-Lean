@@ -26,6 +26,10 @@ updates:
       - dependency-name: tailwindcss
         update-types: [version-update:semver-major]
       - dependency-name: react-scripts
+      # Only the dev proxy (src/setupProxy.js) uses it, with the v2 API react-scripts' dev
+      # server is built on; it goes away with the move to Vite.
+      - dependency-name: http-proxy-middleware
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /

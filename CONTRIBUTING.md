@@ -44,8 +44,12 @@ the architecture, the invariants and the UI spec are in [CLAUDE.md](CLAUDE.md). 
 
 ## Dependencies
 
-- Dependabot opens weekly pull requests (grouped minor and patch updates, GitHub Actions
-  separately). Merge them when CI is green.
+- Dependabot opens weekly pull requests (grouped minor and patch updates, majors one by one,
+  GitHub Actions separately). Merge them when CI is green.
+- Dependabot writes lockfiles with npm 11. The Uberspace runs Node 20 with npm 10, whose `npm ci`
+  can reject such a lockfile ("Missing: … from lock file"); the CI job on Node 20 shows it. Then
+  check out the branch, run `npm install` under Node 20 in that folder and push the lockfile. This
+  goes away once the server runs Node 24 and CI drops Node 20.
 - `frontend/package.json` pins fixed versions of vulnerable sub-packages of the unmaintained
   `react-scripts` under `overrides`. `npm audit` still reports a few findings in the development
   server and in packages without a fix (`CHANGELOG.md`, 2.0.1); CI fails only on critical ones in

@@ -2,13 +2,14 @@
 
 ## Unveröffentlicht
 
-Nur Werkzeuge und Doku, die App selbst ist unverändert; nichts neu einzuspielen.
+Werkzeuge, Doku und Pakete; an der App ändert sich nichts Sichtbares, nichts muss sofort eingespielt werden.
 
 - CI auf GitHub: Bei jedem Push laufen die Tests, ESLint, beide Builds und `npm audit`, auf Node 20, 22 und 24.
 - Releases: Eine veröffentlichte GitHub-Release bekommt automatisch das Zip für `DEPLOY.md` und die Demo-Seite angehängt.
 - Dependabot schlägt jede Woche Paket-Updates vor.
 - Lokal entwickeln: `npm start` im Frontend leitet `/api` an das Backend weiter; `npm test` im Backend, `npm run lint` im Frontend.
 - README neu für alle, die das Projekt nicht kennen (mit Screenshots), dazu `CONTRIBUTING.md`, `SECURITY.md`, eine Vorlage für Pull Requests, `.editorconfig` und `.nvmrc`.
+- Frontend-Pakete: `lucide-react` 1.x (die Icons sehen gleich aus) und `@testing-library/jest-dom` 7; `web-vitals` und `@testing-library/user-event` entfernt, sie wurden nicht benutzt. Beim nächsten Einspielen im Frontend deshalb `npm ci` statt `node_modules` kopieren.
 
 ## 2.0.2 – 29.10.2026
 
