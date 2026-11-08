@@ -1,16 +1,24 @@
 # Änderungen
 
-## Unveröffentlicht
+## 3.0.0 – 08.11.2026
 
-Werkzeuge, Doku und Pakete; an der App ändert sich nichts Sichtbares, nichts muss sofort eingespielt werden.
+Die Werkzeuge unter der App sind erneuert; für Mitglieder und Admins sieht alles aus wie vorher. Beim Einspielen (siehe `DEPLOY.md`): einmalig Node 24 einstellen, in **beiden** Ordnern `npm ci` (im Frontend `npm ci --include=dev`). Die gebauten Dateien liegen jetzt in `~/html/assets/` statt `~/html/static/`. Am Datenformat ändert sich nichts.
 
-- CI auf GitHub: Bei jedem Push laufen die Tests, ESLint, beide Builds und `npm audit`, auf Node 20, 22 und 24.
-- Releases: Eine veröffentlichte GitHub-Release bekommt automatisch das Zip für `DEPLOY.md` und die Demo-Seite angehängt.
-- Dependabot schlägt jede Woche Paket-Updates vor.
-- Lokal entwickeln: `npm start` im Frontend leitet `/api` an das Backend weiter; `npm test` im Backend, `npm run lint` im Frontend.
+**Für alle**
+
+- Admin-Bereich auf sehr kleinen Handys (320 px breit): Der Export-Knopf war zu breit, die Seite ließ sich seitlich verschieben. Unter 360 px Breite hat er jetzt weniger Abstand und kein Symbol.
+- Die Demo-Seite lässt sich auch direkt als Datei öffnen (Zeichensatz und Handy-Darstellung waren nur im Artifact gesetzt).
+- Tailwind 4 braucht neuere Browser: Safari ab 16.4 (iOS 16.4, März 2023), Chrome ab 111, Firefox ab 128. Auf älteren Geräten kann die Darstellung leiden.
+
+**Technik**
+
+- Backend: Express 5.
+- Frontend: Vite 8 statt Create React App, Vitest statt Jest, ESLint 9 mit eigener Konfiguration, Tailwind 4. Dateien mit JSX heißen `.jsx`. `npm audit` meldet in beiden Ordnern nichts mehr (vorher 16 Meldungen im Build-Werkzeug).
+- Node 22.12 oder neuer, auf dem Uberspace Node 24 (Node 20 wird seit April 2026 nicht mehr gepflegt).
+- CI auf GitHub: Bei jedem Push laufen Tests, ESLint, beide Builds und `npm audit` auf Node 22 und 24. Eine veröffentlichte GitHub-Release bekommt automatisch das Zip für `DEPLOY.md` und die Demo-Seite angehängt. Dependabot schlägt jede Woche Paket-Updates vor.
+- Lokal entwickeln: `npm start` im Frontend leitet `/api` an das Backend weiter.
 - README neu für alle, die das Projekt nicht kennen (mit Handy-Screenshots), dazu `CONTRIBUTING.md`, `SECURITY.md`, eine Vorlage für Pull Requests, `.editorconfig` und `.nvmrc`.
-- Demo-Seite: Sie lässt sich jetzt auch direkt als Datei öffnen (Zeichensatz und Handy-Darstellung waren nur im Artifact gesetzt).
-- Frontend-Pakete: `lucide-react` 1.x (die Icons sehen gleich aus) und `@testing-library/jest-dom` 7; `web-vitals` und `@testing-library/user-event` entfernt, sie wurden nicht benutzt. Beim nächsten Einspielen im Frontend deshalb `npm ci` statt `node_modules` kopieren.
+- Geprüft gegen 2.0.2: 35 Screenshots (Handy, kleines Handy, Desktop; hell und dunkel) sind gleich bis auf Rundungen unter einem Pixel, und die berechneten Styles aller Elemente stimmen in 96 Zuständen überein (auch Hover, Querformat, Meldungen, Formulare, Import-Vorschau).
 
 ## 2.0.2 – 29.10.2026
 

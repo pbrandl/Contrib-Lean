@@ -11,14 +11,14 @@ So läuft ein Update ab:
 - Jeden Befehl einzeln kopieren und mit Enter abschicken. Nie mehrere Befehle in eine Zeile setzen.
 - `rsync --delete` nur mit vollständigem Quell- und Zielpfad, so wie unten, und nie zusammen mit anderen Befehlen. Ein Tippfehler macht sonst aus dem letzten Wort das Ziel, und `--delete` leert diesen Ordner.
 
-Die Befehle unten sind für Version 2.0.2 (`v2.0.2`). Für eine spätere Version überall `v2.0.2` durch den neuen Namen ersetzen, zum Beispiel `v2.1`.
+Die Befehle unten sind für Version 3.0.0 (`v3.0.0`). Für eine spätere Version überall `v3.0.0` durch den neuen Namen ersetzen, zum Beispiel `v3.1.0`.
 
 ## 0. Auf deinem Rechner: das Zip hochladen
 
 Im Ordner, in dem das Zip liegt (meist `~/Downloads`):
 
 ```bash
-scp fundraiser-app-v2.0.2.zip franz@antila.uberspace.de:~/
+scp fundraiser-app-v3.0.0.zip franz@antila.uberspace.de:~/
 ```
 
 Dann einloggen:
@@ -35,46 +35,76 @@ curl -s https://franz.uber.space/api/public | grep -o '"totalRaised":[0-9.]*\|"c
 
 Die drei Zahlen notieren (Summe, Anzahl Gebote, Stunden). Nach dem Umschalten müssen dieselben herauskommen.
 
-## 2. Neue Version auspacken
+## 2. Node-Version (seit 3.0.0)
+
+Version 3 braucht Node 22.12 oder neuer; auf dem Uberspace läuft Node 24. Einmalig umstellen, danach bleibt es so:
+
+```bash
+node -v
+```
+
+Steht dort schon `v24.…`, weiter mit Schritt 3. Sonst:
+
+```bash
+uberspace tools version use node 24
+```
+
+```bash
+node -v
+```
+
+Jetzt muss `v24.…` stehen. Die laufende App merkt davon nichts; sie startet erst beim Umschalten in Schritt 6 mit Node 24. Auch die alte Version (2.0.2) läuft mit Node 24, der Rückweg bleibt also offen. Gibt es Node 24 auf dem Uberspace nicht, zeigt `uberspace tools version list node` die verfügbaren Versionen; 22 geht auch.
+
+## 3. Neue Version auspacken
 
 ```bash
 cd ~
 ```
 
 ```bash
-ls -d ~/fundraiser-app-v2.0.2 ~/fundraiser-app-vor-v2.0.2
+ls -d ~/fundraiser-app-v3.0.0 ~/fundraiser-app-vor-v3.0.0
 ```
 
-Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v2.0.2` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v2.0.2` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v2.0.2`, bitte nicht weitermachen und melden.
+Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v3.0.0` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v3.0.0` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v3.0.0`, bitte nicht weitermachen und melden.
 
 ```bash
-unzip -q ~/fundraiser-app-v2.0.2.zip -d ~
+unzip -q ~/fundraiser-app-v3.0.0.zip -d ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v2.0.2
+ls ~/fundraiser-app-v3.0.0
 ```
 
 Dort müssen unter anderem `backend`, `frontend` und `DEPLOY.md` stehen.
 
-## 3. Pakete übernehmen
+## 4. Pakete laden
 
-Version 2.0.2 hat dieselben Pakete wie 2.0.1, sie werden kopiert:
+Version 3.0.0 hat neue Pakete in Backend (Express 5) und Frontend (Vite, Vitest, Tailwind 4), deshalb werden beide neu geladen:
 
 ```bash
-cp -a ~/fundraiser-app/backend/node_modules ~/fundraiser-app-v2.0.2/backend/
+cd ~/fundraiser-app-v3.0.0/backend
 ```
 
 ```bash
-cp -a ~/fundraiser-app/frontend/node_modules ~/fundraiser-app-v2.0.2/frontend/
+npm ci
 ```
 
-(Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`. Nach `npm ci` sind Hinweise wie `npm warn deprecated` normal; sie kommen aus dem Build-Werkzeug react-scripts und landen nicht in der App. `npm audit` meldet im Frontend Lücken im Build-Werkzeug, siehe 2.0.1 im `CHANGELOG.md`, im Backend keine.)
-
-## 4. Testen und bauen
+```bash
+cd ~/fundraiser-app-v3.0.0/frontend
+```
 
 ```bash
-cd ~/fundraiser-app-v2.0.2/backend
+npm ci --include=dev
+```
+
+Das dauert ein bis zwei Minuten. Am Ende steht `added … packages` und `found 0 vulnerabilities`. (`--include=dev`: Das Werkzeug, das die Seiten baut, gehört zu den Entwicklungs-Paketen und muss mit.)
+
+(Welche Pakete sich in einer Version geändert haben, steht im `CHANGELOG.md`: unverändert heißt `node_modules` kopieren, geändert heißt im jeweiligen neuen Ordner `npm ci`.)
+
+## 5. Testen und bauen
+
+```bash
+cd ~/fundraiser-app-v3.0.0/backend
 ```
 
 ```bash
@@ -84,16 +114,16 @@ node test.js /nonexistent
 Das dauert etwa eine Minute und gibt viele Zeilen aus, darunter Hunderte `[login] wrong PIN …`: Die Tests probieren absichtlich falsche PINs. Am Ende muss `0 failed` stehen. Die Tests laufen mit einer eigenen, leeren Test-Datenbank und berühren die echten Daten nicht.
 
 ```bash
-cd ~/fundraiser-app-v2.0.2/frontend
+cd ~/fundraiser-app-v3.0.0/frontend
 ```
 
 ```bash
 npm run build
 ```
 
-Hier muss `Compiled successfully.` stehen.
+Hier muss am Ende `✓ built in …` stehen.
 
-## 5. Umschalten
+## 6. Umschalten
 
 Von `supervisorctl stop` bis zum Start ist die App nicht erreichbar, meist unter einer Minute. Am besten zu einer ruhigen Zeit. Offene Seiten zeigen so lange „Gleich wieder da“ und laufen danach von selbst weiter. Wer genau dann speichert, speichert danach einfach noch einmal.
 
@@ -102,7 +132,7 @@ cd ~
 ```
 
 ```bash
-ls ~/fundraiser-app-v2.0.2/backend
+ls ~/fundraiser-app-v3.0.0/backend
 ```
 
 Hier darf **kein** `data` stehen (sonst bitte melden und nicht weitermachen).
@@ -112,15 +142,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v2.0.2/backend/
+cp -a ~/fundraiser-app/backend/data ~/fundraiser-app-v3.0.0/backend/
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-vor-v2.0.2
+mv ~/fundraiser-app ~/fundraiser-app-vor-v3.0.0
 ```
 
 ```bash
-mv ~/fundraiser-app-v2.0.2 ~/fundraiser-app
+mv ~/fundraiser-app-v3.0.0 ~/fundraiser-app
 ```
 
 ```bash
@@ -133,7 +163,7 @@ Das dauert etwa 30 Sekunden, bis `fundraiser: started` kommt: Uberspace wartet s
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
 ```
 
-## 6. Prüfen
+## 7. Prüfen
 
 ```bash
 supervisorctl status fundraiser
@@ -157,7 +187,13 @@ curl -s https://franz.uber.space/api/public | grep -o '"totalRaised":[0-9.]*\|"c
 
 Dieselben Zahlen wie in Schritt 1 (außer jemand hat in der Zwischenzeit geboten).
 
-Dann am Handy die Seite neu laden: Die Mitglieder sind noch angemeldet, Gebote und Stunden stimmen. Oben rechts ist jetzt das Zahnrad für die Einstellungen. Zum Schluss `/admin` öffnen, auf ein Mitglied tippen (Name und PIN erscheinen, mit „Abbrechen“ wieder schließen) und einmal exportieren.
+```bash
+ls ~/html/assets/
+```
+
+Dort liegen jetzt die gebauten Dateien (`index-….js`, `index-….css`, Schriften); der alte Ordner `static` ist weg.
+
+Dann am Handy die Seite neu laden: Die Mitglieder sind noch angemeldet, Gebote und Stunden stimmen, die Seite sieht aus wie vorher. Zum Schluss `/admin` öffnen, auf ein Mitglied tippen (Name und PIN erscheinen, mit „Abbrechen“ wieder schließen) und einmal als Excel exportieren.
 
 ## Zurück zur alten Version
 
@@ -168,15 +204,15 @@ supervisorctl stop fundraiser
 ```
 
 ```bash
-mv ~/fundraiser-app ~/fundraiser-app-v2.0.2-fehler
+mv ~/fundraiser-app ~/fundraiser-app-v3.0.0-fehler
 ```
 
 ```bash
-mv ~/fundraiser-app-vor-v2.0.2 ~/fundraiser-app
+mv ~/fundraiser-app-vor-v3.0.0 ~/fundraiser-app
 ```
 
 ```bash
-cp -a ~/fundraiser-app-v2.0.2-fehler/backend/data/. ~/fundraiser-app/backend/data/
+cp -a ~/fundraiser-app-v3.0.0-fehler/backend/data/. ~/fundraiser-app/backend/data/
 ```
 
 ```bash
@@ -189,16 +225,16 @@ supervisorctl start fundraiser
 rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/
 ```
 
-Die alte Version liest alles, was die neue gespeichert hat. Von 2.0.2 zurück auf 2.0.1 ändert sich nur die PIN-Eingabe am Computer.
+Die alte Version liest alles, was die neue gespeichert hat: 3.0.0 hat am Datenformat nichts geändert. Node 24 bleibt eingestellt, 2.0.2 läuft damit.
 
 ## Danach
 
 Wenn die neue Version ein paar Tage gut läuft, am besten nach der Bietrunde:
 
 ```bash
-rm -rf ~/fundraiser-app-vor-v2.0.2
+rm -rf ~/fundraiser-app-vor-v3.0.0
 ```
 
 ```bash
-rm ~/fundraiser-app-v2.0.2.zip
+rm ~/fundraiser-app-v3.0.0.zip
 ```

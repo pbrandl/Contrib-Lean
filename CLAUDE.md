@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. The current version is the top entry of `CHANGELOG.md`. `README.md` has the overview, local development and the operations guide (data folder, backups, PIN reset, restore), `CONTRIBUTING.md` the workflow and the release steps, `DEPLOY.md` (German, for the owner) the way to install a new version.
 
-- `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
-- `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
-  react-scripts is unmaintained: vulnerable sub-packages of it are pinned to fixed versions in `overrides` in `frontend/package.json`. After an update, check `npm audit` in both folders; what remains open is listed in `CHANGELOG.md` (2.0.1).
+- `backend/`: Express 5, everything in `server.js`, no database (one JSON file). Express 5 hands errors of async handlers to the error handler itself, so routes are plain `async` functions.
+- `frontend/`: React 19 built with Vite 8, styled with Tailwind 4, tested with Vitest (jsdom) and linted with ESLint 9 (`eslint.config.js`; ESLint 10 waits for the React and a11y plugins). Files with JSX are `.jsx`. Since 3.0.0; before, it was Create React App with Tailwind 3.
+- Node 22.12 or newer (`engines`); the Uberspace and `.nvmrc` use 24. `npm audit` is clean in both folders; `overrides` in `frontend/package.json` pins a fixed `minimatch` for the lint tooling.
 
 User-facing text exists in German (main language, "du"), English and Spanish, all in `frontend/src/i18n/{de,en,es}.js`; never write a visible text into a component. Server errors carry a `code` and `params` (`HttpError(status, message, retryAfterMs, code, params)`), and the frontend shows `errors.<code>` in the page's language; the German `message` stays for the log and older pages. Code and comments are in English.
 
@@ -30,21 +30,22 @@ Frontend (`frontend/`):
 
 ```bash
 npm ci
-npm start                           # dev server on :3000; src/setupProxy.js forwards /api to :3001 (API_TARGET)
-npm run lint                        # ESLint over src, no warnings allowed
-CI=true npx react-scripts test --watchAll=false                      # all tests
-CI=true npx react-scripts test --watchAll=false src/csv.test.js      # one file
-CI=true npx react-scripts test --watchAll=false -t "round-trips"     # one test by name
-CI=true npm run build               # ESLint runs inside the build; CI=true turns warnings into errors
+npm start                           # Vite dev server on :3000; forwards /api to :3001 (env API_TARGET)
+npm run lint                        # ESLint, no warnings allowed (the build does not lint)
+npm test                            # all tests (vitest run)
+npx vitest run src/csv.test.js      # one file
+npx vitest run -t "round-trips"     # one test by name
+npm run build                       # into build/ (assets/ holds the hashed files)
+npm run preview                     # serves build/ on :3000, with the same /api proxy
 ```
 
-`frontend/.env` sets `INLINE_RUNTIME_CHUNK=false`. Keep it: the Content-Security-Policy in `public/.htaccess` forbids inline scripts, and without it the built `index.html` would contain one. It also sets `REACT_APP_DEMO=0`, so the flag is a build-time constant and the normal build drops the demo backend (and keeps the XLSX code as a lazy chunk, see `files.js`).
+`vite.config.js` holds the build, dev server and Vitest settings. The Content-Security-Policy in `public/.htaccess` forbids inline scripts; Vite puts none into `index.html`, and CI checks that. The demo flag is `DEMO = import.meta.env.MODE === 'demo'` in `demo.js`, a build-time constant: the normal build drops the demo backend and keeps the XLSX code as a lazy chunk (`files.js`). The JS syntax target is Safari 14 / Chrome 87; Tailwind 4's CSS needs Safari 16.4, Chrome 111, Firefox 128.
 
-To run the whole app locally, start `node server.js` in `backend/` and `npm start` in `frontend/` (the backend sends no CORS headers; the dev proxy in `src/setupProxy.js` makes that unnecessary). The dev server does not send the Content-Security-Policy of `public/.htaccess`; the production build is checked for inline scripts in CI.
+To run the whole app locally, start `node server.js` in `backend/` and `npm start` in `frontend/` (the backend sends no CORS headers; the dev proxy makes that unnecessary). The dev server does not send the Content-Security-Policy of `public/.htaccess`.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request: backend tests and `npm audit` on Node 20, 22 and 24; frontend lint, tests, build, demo build and `npm audit --audit-level=critical` on Node 20 and 24. A published GitHub release runs `.github/workflows/release.yml`, which checks that the versions match the tag and attaches the deploy zip and the demo page. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests. The Uberspace runs Node 20 (end of life since April 2026); everything is tested on 24 as well, so the server can move to it (`uberspace tools version use node 24`).
+CI (`.github/workflows/ci.yml`) runs on every push and pull request, on Node 22 and 24: backend tests and `npm audit`; frontend lint, tests, build (checked for inline scripts), demo build and `npm audit`. A published GitHub release runs `.github/workflows/release.yml`, which checks that the versions match the tag and attaches the deploy zip and the demo page. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests.
 
-Demo (no server, example data, neutral branding; `src/demo.js` replaces the API in the browser when `REACT_APP_DEMO=1`):
+Demo (no server, example data, neutral branding; `src/demo.js` replaces the API in the browser in `vite build --mode demo`):
 
 ```bash
 npm run build:demo                  # frontend/build-demo/bietrunde-demo.html, one self-contained page
@@ -52,7 +53,7 @@ npm run build:demo                  # frontend/build-demo/bietrunde-demo.html, o
 
 The owner publishes that page as a Claude artifact. It must not go on the live server: next to the real app it would lead visitors to the real member list.
 
-Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own folder (`~/fundraiser-app-vX`), gets `node_modules` copied (or `npm ci` when a lockfile changed), is tested and built there, and then the service is stopped, `backend/data` copied over and the folders swapped; the old folder stays as the way back. When you write commands for the owner:
+Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own folder (`~/fundraiser-app-vX`), gets `node_modules` copied (or `npm ci` when a lockfile changed; in `frontend/` `npm ci --include=dev`, since Vite is a dev dependency), is tested and built there, and then the service is stopped, `backend/data` copied over and the folders swapped; the old folder stays as the way back. When you write commands for the owner:
 
 - One command per line, never `&&` chains. Once a pasted line merged `~/html/` with the next `cd`, `rsync --delete build/ ~/html/cd ~/fundraiser-app/backend` took the backend folder as its target and emptied it, data included; it was restored from the copy made before the update.
 - `rsync --delete` only with full source and target paths (`rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/`).
@@ -63,7 +64,7 @@ Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own fol
 
 ### Hosting
 
-Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/admin` to `index.html` and serves `index.html` as `ErrorDocument 404`; `App.js` picks `AdminApp`, `MemberApp` or `NotFoundPage` from the path. While the service is stopped, the Uberspace proxy answers `/api` with 502/503/504 and HTML; `api()` turns that (and only that, the server's own errors are JSON) into `ApiError.maintenance`, and the pages show `MaintenancePage`, which retries every 5 s. The Uberspace web backend forwards `/api` **with the full path** to the supervisor service `fundraiser` on port 3001, so every route lives on the `/api` router. `trust proxy` is `1` (exactly one proxy), so `req.ip` is the client address from `X-Forwarded-For`.
+Apache serves the frontend build from `~/html`. `public/.htaccess` rewrites `/admin` to `index.html` and serves `index.html` as `ErrorDocument 404`; it caches the hashed files in `assets/` (`name-1a2B3c4D.js`) for good and `index.html` never; `App.jsx` picks `AdminApp`, `MemberApp` or `NotFoundPage` from the path. While the service is stopped, the Uberspace proxy answers `/api` with 502/503/504 and HTML; `api()` turns that (and only that, the server's own errors are JSON) into `ApiError.maintenance`, and the pages show `MaintenancePage`, which retries every 5 s. The Uberspace web backend forwards `/api` **with the full path** to the supervisor service `fundraiser` on port 3001, so every route lives on the `/api` router. `trust proxy` is `1` (exactly one proxy), so `req.ip` is the client address from `X-Forwarded-For`.
 
 ### Data (`backend/data/`)
 
@@ -109,7 +110,7 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 
 ### Import and export
 
-- `frontend/src/files.js` lists the export formats (`EXPORT_FORMATS`: XLSX, CSV, JSON; the admin page offers them in a select next to "Herunterladen", the choice is kept in `localStorage`) and reads import files: `readImportFile` decides by the first bytes (zip = XLSX, `{`/`[` = JSON, old `.xls` gets an explanation, everything else is CSV, UTF-8 or Windows-1252). A new format is one entry there.
+- `frontend/src/files.js` lists the export formats (`EXPORT_FORMATS`: XLSX, CSV, JSON; the admin page offers them in a select next to "Herunterladen", the choice is kept in `localStorage`; below 360 px width both halves get less padding and the download icon goes, so they fit at 320 px) and reads import files: `readImportFile` decides by the first bytes (zip = XLSX, `{`/`[` = JSON, old `.xls` gets an explanation, everything else is CSV, UTF-8 or Windows-1252). A new format is one entry there.
 - XLSX (`xlsx.js`, with `fflate` for the zip, loaded on demand): `writeXlsx` writes one sheet with inline strings, numbers, a bold frozen header row and the default cell style Excel expects; `readXlsx` reads the first sheet (shared or inline strings, cell references) into the same `{ line, cells }` rows as the CSV parser. CSV and XLSX share `memberRows`/`membersFromRows` in `csv.js`, so both have the same columns and import again.
 - CSV is parsed and written in the browser (`frontend/src/csv.js`). It accepts `,` or `;`, German number formats and a BOM, and guards against spreadsheet formulas. The browser always sends JSON to `POST /admin/import`.
 - Export: `contributionsGross` and `enteredAs` (`brutto`/`netto`) per bid; the CSV has `contribution_gross` and `entered_as`. The import keeps a brutto amount only where `enteredAs` is `brutto`; otherwise it reads the netto value.
@@ -118,21 +119,22 @@ Next to it: `audit.log` (one JSON line per change and per login, with `rev`, `ip
 ### Languages, settings and theme
 
 - `i18n/index.js`: `LANGUAGES` (code, name, `Intl` locale, messages), `t(key, params)` with `{placeholders}` and `{ one, other }` plurals (via `Intl.PluralRules`), fallback to German. A new language: copy `de.js`, translate, add one line; `i18n.test.js` checks that every language has the same keys and placeholders as German. Number formats follow the language (`locale()` in `lib.js`); typing amounts too (`decimalSign`/`groupSign`, `fromField`, `isDecimalKey` in `entry.js`: in English only "." is decimal).
-- `settings.js`: `SETTINGS` describes the per-device settings (`theme`: system/light/dark, `language`, `amounts`: netto/brutto) with their initial values (browser language, the version-1 `franzwerk.mode`); stored in `franzwerk.settings`. `SettingsProvider` (in `App.js`) applies the theme (class `dark` on `<html>`, following the device for `system`) and the language; `useT()` gives `t` and re-renders on a language change, `useAmountMode()` replaces the old per-page mode. A new setting: one entry in `SETTINGS` plus texts `settings.<key>.label/.hint/.<option>`; `SettingsPage.js` renders it.
+- `settings.js`: `SETTINGS` describes the per-device settings (`theme`: system/light/dark, `language`, `amounts`: netto/brutto) with their initial values (browser language, the version-1 `franzwerk.mode`); stored in `franzwerk.settings`. `SettingsProvider` (in `App.jsx`) applies the theme (class `dark` on `<html>`, following the device for `system`) and the language; `useT()` gives `t` and re-renders on a language change, `useAmountMode()` replaces the old per-page mode. A new setting: one entry in `SETTINGS` plus texts `settings.<key>.label/.hint/.<option>`; `SettingsPage.jsx` renders it.
 - The settings page shows one card with a row per setting; the options are plain text (the chosen one dark and underlined in `akzent`), radio inputs underneath. No segmented buttons: the owner finds them ugly.
-- The settings page lies over every page (`Shell` in `App.js`, the page below is `inert` and keeps its state) and has its own history entry; `SettingsButton` (gear) sits in the top bar, the front page header, the PIN screen, the status screens and the offline page. `FrontPage`'s popstate handler keeps the PIN step when only the settings entry is popped.
-- Dark mode: the palette in `tailwind.config.js` reads CSS variables (`--c-*`, RGB channels) defined in `index.css` for `:root` and `.dark`. Cards stand off the page with a 1 px `ring-tinte/[0.07]` and `shadow-card`; keep that contrast (the owner asked for it). Use the palette (`bg-flaeche` for cards and fields instead of `bg-white`, `text-akzent` for brand-blue text on light surfaces, `text-tinte`, `bg-papier`) and new components follow the theme by themselves. The dark blue screens (PIN, sheet, status) and the header look the same in both.
-- Tests render pages with `render` from `src/test-utils.js` (inside `SettingsProvider`); `setupTests.js` makes the browser ask for German and resets the settings before every test.
+- The settings page lies over every page (`Shell` in `App.jsx`, the page below is `inert` and keeps its state) and has its own history entry; `SettingsButton` (gear) sits in the top bar, the front page header, the PIN screen, the status screens and the offline page. `FrontPage`'s popstate handler keeps the PIN step when only the settings entry is popped.
+- Dark mode: the palette (`@theme` in `index.css`) reads CSS variables (`--c-*`, RGB channels) defined in `index.css` for `:root` and `.dark`. Cards stand off the page with a 1 px `ring-tinte/[0.07]` and `shadow-card`; keep that contrast (the owner asked for it). Use the palette (`bg-flaeche` for cards and fields instead of `bg-white`, `text-akzent` for brand-blue text on light surfaces, `text-tinte`, `bg-papier`) and new components follow the theme by themselves. The dark blue screens (PIN, sheet, status) and the header look the same in both.
+- Tests render pages with `render` from `src/test-utils.jsx` (inside `SettingsProvider`); `setupTests.js` makes the browser ask for German and resets the settings before every test. Vitest runs with globals (`vi`, `test`, `expect`); `setupTests.js` also gives Testing Library a `jest.advanceTimersByTime`, so `findBy*`/`waitFor` move Vitest's fake timers.
+- Tailwind 4 (`src/index.css`): `@import 'tailwindcss'`, the theme in `@theme`, dark mode as `@custom-variant dark`. Our own classes (`.btn-*`, `.card`, `.sheet*`, …) stay plain CSS in `@layer components`, in source order (do not turn them into `@utility`: Tailwind sorts utilities by its own rules, which broke the sheet). `@apply` takes only Tailwind classes, never one of ours (the `btn` list is repeated where needed). Tailwind's classes sit in a cascade layer that beats every layered rule of ours, so a rule that must override a Tailwind class (`.dark .text-ziegel`, …) goes in the unlayered block after the components layer. A block at the top keeps Tailwind 3 defaults the pages rely on (border and placeholder colour, pointer cursor on buttons, search fields).
 
 ### Frontend structure
 
 - `lib.js`: the `api()` wrapper (throws `ApiError` with `status`, `retryAfter`, `timeout` and `code`, the message already translated by `errorMessage`; 401 means log out; status 0 means no answer, after 15 s at the latest), device id and trusted-device storage, `loginWithPin`, `isNewer`, session storage, formatting in the page's language (`formatNumber` with cents, `formatWhole` for totals), netto/brutto (`toGross`, `toNet`, `inMode`), `parseAmount`, `usePolling` (pauses while the tab is hidden and refreshes when it becomes visible again) and `useNotice`.
-- `ui.js`: shared components (`Band` header, `TopBar`, `SettingsButton`, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
+- `ui.jsx`: shared components (`Band` header, `TopBar`, `SettingsButton`, `Progress`, `PinLogin`, `PinChange`, `Callout`, `Notice` banner at the top, `BusyButton`, `Spinner`, `LoadingPage`).
 - **Every button that waits for the server is a `BusyButton`** (`busy`, `busyLabel` for screen readers, `disabled` only for "not possible yet"). While busy it looks the same and ignores clicks; after 0.2 s (`useDelayed`) a spinner replaces its content and the button keeps its width. No "Wird … …" texts on buttons.
-- `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.js`: the full-screen sheet with the totals preview. `usesKeypad()` in `lib.js` picks the keypad (`pointer: coarse`) or the keyboard, for the sheet and the PIN entry.
+- `entry.js`: the typing rules of the sheet (`pressKey`, `sanitize`, `fromText`, `toRaw`, `formatRaw`, limits in `KINDS`). `AmountSheet.jsx`: the full-screen sheet with the totals preview. `usesKeypad()` in `lib.js` picks the keypad (`pointer: coarse`) or the keyboard, for the sheet and the PIN entry.
 - Admin member list: a tap on a row opens `MemberEditor` (name, new PIN, delete behind a question); it saves with `PATCH /api/admin/users/:id { name?, pin? }`, one write and audit line(s) `user_renamed`/`pin_changed`. The old `PUT .../pin` stays for the admin's own PIN.
-- `demo.js`: the demo backend (routes, responses and error codes of `server.js` in the browser, 24 example members, state in `localStorage`); `App.js` shows a demo strip and switches to the admin view with `#admin`. `scripts/demo-inline.py` turns the demo build into one page.
-- `MemberApp.js`:
+- `demo.js`: the demo backend (routes, responses and error codes of `server.js` in the browser, 24 example members, state in `localStorage`); `App.jsx` shows a demo strip and switches to the admin view with `#admin`. The demo build has one script (dynamic imports inlined) and images inline; `scripts/demo-inline.py` puts script, styles and the latin fonts into one page with its own charset and viewport.
+- `MemberApp.jsx`:
   - `FrontPage`: name list, search, PIN step.
   - `MemberPage`: bid and hours card, the sheet, PIN change.
   - Both use the History API so the phone's back gesture works: the PIN step pushes an entry, an open sheet pushes one (back closes it), and leaving the member page logs out.
@@ -152,7 +154,7 @@ If you change one of these, update both sides:
 | Name max. 60 characters | `MAX_NAME_LENGTH` | `maxLength` in `AdminApp` |
 | Start PIN 1234, admin PIN 0000 | `DEFAULT_PIN`, `ADMIN_DEFAULT_PIN` | texts in `AdminApp` |
 | Max. bid 1,000,000 € netto | `MAX_AMOUNT` | `KINDS.money.maxInt` (6 digits) in `entry.js` |
-| Cents for euros, 0.1 h for hours | `requireAmount`, `requireHours` | `KINDS` in `entry.js`, `round1` in `AmountSheet.js` |
+| Cents for euros, 0.1 h for hours | `requireAmount`, `requireHours` | `KINDS` in `entry.js`, `round1` in `AmountSheet.jsx` |
 | Brutto = netto × 1.19 in whole cents; brutto typed → netto rounded up | `VAT_PERCENT`, `toGross`, `toNet` | `VAT_PERCENT`, `toGross`, `toNet` in `lib.js` |
 | Error codes and their params | `HttpError(…, code, params)` | `errors.<code>` in every `i18n/*.js`, `errorMessage` in `lib.js`, `DemoError` in `demo.js` |
 | Wait times ("in 3 Minuten") | `waitText` | `waitText` in `lib.js` |
@@ -185,7 +187,7 @@ Deferred or not wanted:
 
 ## UI spec (agreed October 2026)
 
-Implemented in 1.0.0 (`AmountSheet.js`, `entry.js`, `MemberPage`, `PinLogin`, `AdminApp`). This section is the spec: change the app and this text together.
+Implemented in 1.0.0 (`AmountSheet.jsx`, `entry.js`, `MemberPage`, `PinLogin`, `AdminApp`). This section is the spec: change the app and this text together.
 
 The design prototype the bid entry was built from (`docs/gebotseingabe-entwurf.html`) was removed in 2.0.0: the demo build shows the whole app.
 
@@ -211,7 +213,7 @@ The design prototype the bid entry was built from (`docs/gebotseingabe-entwurf.h
   - Progress bar.
   - It must fit down to 320 px: numbers wrap to a new line instead of being cut off.
   - Generous spacing between the top bar, the numbers, the bar and the line below it, so it does not look crowded. The values are in the prototype CSS (`.topbar`, `.stats`, `.track`, `.meta`, `.band-inner`).
-  - Top bar (since 2.0.0, the same on the admin page, `TopBar` in `ui.js`): a back arrow left, the member's name (or "Admin") centered, the settings gear right; no logo and no "Abmelden" text. The arrow does what the browser's back button does: the page has its own history entry (`{ member: true }` / `{ admin: true }`), and leaving it logs out (screen readers hear "Abmelden"). Back on the admin page leads to the admin PIN screen.
+  - Top bar (since 2.0.0, the same on the admin page, `TopBar` in `ui.jsx`): a back arrow left, the member's name (or "Admin") centered, the settings gear right; no logo and no "Abmelden" text. The arrow does what the browser's back button does: the page has its own history entry (`{ member: true }` / `{ admin: true }`), and leaving it logs out (screen readers hear "Abmelden"). Back on the admin page leads to the admin PIN screen.
   - The total hours are beige, like the start-PIN notice (`#FFF8D2` at 85 %).
   - Outside the page (overscroll, the phone's safe areas) the light page colour continues below the content, never a blue strip at the bottom. Android and desktop browsers show blue above the page; iOS paints both edges in one colour (the body's), so there the top is light too. That is accepted: a blue body would bring back the blue strip at the bottom.
 - **Card "Dein Beitrag"** (the same word as the keypad title; texts about the own bid say "Beitrag", the header count stays "N Gebote"):
@@ -250,7 +252,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 - **Short phones in portrait** (less than 540 px high, e.g. 320 pt iPhones in Safari with about 460 px): less spacing, a smaller amount and button, so it fits with key rows of at least 48 px. Check fit at browser heights (320×460, 375×553), not screen heights.
 - **Phones in landscape** (less than 540 px high): the amount is on the left, the keypad and "Speichern" on the right, so it still fits. Should a screen be too short even for that, the sheet scrolls.
 
-### PIN entry (member PIN step and admin login, `PinLogin` in `ui.js`)
+### PIN entry (member PIN step and admin login, `PinLogin` in `ui.jsx`)
 
 - A screen of its own in the dark blue, white only (no yellow). The top row holds only the back arrow (`BackButton`, icon without text; screen readers hear "Anderer Name" or "Zur Startseite") and the settings gear, like the header rows of the member and admin pages. The lock sits in a round light circle (white at 20 % with a 30 % edge, so it stands out on the blue) in front of the name, on the same line (since 2.0.0; it used to sit above the name and took space).
 - One box per digit, left-aligned, up to 8. A box appears together with its digit (since 2.0.0; there is no empty box, so none stays open at the end, and before the first digit an invisible box keeps the row's height). Every digit shows briefly (0.7 s), then turns into a round dot. The box of the newest digit has a white edge that is highlighted outward once, in one smooth movement, when it appears.
@@ -263,7 +265,7 @@ A tap on "Beitrag ändern" or "Stunden ändern" opens a full-screen dark blue sh
 
 ### Banners (whole app: member page, front page and admin)
 
-The notices from `useNotice`/`Notice` in `ui.js` change:
+The notices from `useNotice`/`Notice` in `ui.jsx` change:
 
 - **Position:** at the top of the screen instead of the bottom, below the safe area, sliding in from above.
 - **Colour:**

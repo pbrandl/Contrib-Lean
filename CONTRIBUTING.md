@@ -10,8 +10,8 @@ the architecture, the invariants and the UI spec are in [CLAUDE.md](CLAUDE.md). 
 1. Branch off `main`. One topic per branch and pull request.
 2. Change code, tests and docs together. `CLAUDE.md` is the spec: when behaviour changes, its text
    changes in the same pull request.
-3. Run the checks locally (`npm test` in `backend/`; `npm run lint`, `CI=true npm test` and
-   `CI=true npm run build` in `frontend/`). CI runs them again on Node 20, 22 and 24.
+3. Run the checks locally (`npm test` in `backend/`; `npm run lint`, `npm test` and
+   `npm run build` in `frontend/`). CI runs them again on Node 22 and 24.
 4. Add a line to `CHANGELOG.md` (German, it is read by the people who run the round) under
    "Unveröffentlicht".
 5. Open a pull request; the template has a short checklist.
@@ -38,24 +38,21 @@ the architecture, the invariants and the UI spec are in [CLAUDE.md](CLAUDE.md). 
 - `backend/test.js` is one sequential script: later checks reuse tokens and members from earlier
   ones, and it moves a fake clock instead of waiting. Add new checks at the end of the matching
   section.
-- Frontend tests use React Testing Library and render pages with `render` from `src/test-utils.js`.
-  Some check visual states (CSS classes of the PIN boxes), so `no-node-access` and `no-container`
-  are switched off for test files in `frontend/package.json`.
+- Frontend tests run in Vitest with React Testing Library and render pages with `render` from
+  `src/test-utils.jsx`. Some check visual states (CSS classes of the PIN boxes), so
+  `no-node-access` and `no-container` are switched off for test files in `eslint.config.js`.
+- Styles: Tailwind 4 with our own classes as plain CSS in `index.css`; read the Tailwind part of
+  `CLAUDE.md` before changing them (layer order, no `@apply` of our own classes).
 
 ## Dependencies
 
 - Dependabot opens weekly pull requests (grouped minor and patch updates, majors one by one,
   GitHub Actions separately). Merge them when CI is green.
-- Dependabot writes lockfiles with npm 11. The Uberspace runs Node 20 with npm 10, whose `npm ci`
-  can reject such a lockfile ("Missing: … from lock file"); the CI job on Node 20 shows it. Then
-  check out the branch, run `npm install` under Node 20 in that folder and push the lockfile. This
-  goes away once the server runs Node 24 and CI drops Node 20.
-- `frontend/package.json` pins fixed versions of vulnerable sub-packages of the unmaintained
-  `react-scripts` under `overrides`. `npm audit` still reports a few findings in the development
-  server and in packages without a fix (`CHANGELOG.md`, 2.0.1); CI fails only on critical ones in
-  the frontend and on any finding in the backend.
-- Planned, each as its own pull request: Create React App to Vite (and Jest to Vitest), Express 4 to
-  5, Tailwind 3 to 4. Dependabot leaves these majors alone on purpose.
+- `npm audit` is clean in both folders, and CI fails on any finding. `frontend/package.json` pins a
+  fixed `minimatch` for the lint tooling under `overrides`; drop it once
+  `@typescript-eslint/typescript-estree` depends on a fixed version itself.
+- ESLint stays on 9 until `eslint-plugin-react` and `eslint-plugin-jsx-a11y` support 10; Dependabot
+  skips that major on purpose.
 - Actions in the workflows are pinned to commit SHAs, with the version in a comment.
 
 ## Releases

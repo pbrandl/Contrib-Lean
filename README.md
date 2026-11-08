@@ -32,7 +32,7 @@ Every [release](https://github.com/pbrandl/Contrib-Lean/releases) has that page 
 
 ## Development
 
-Requirements: Node.js 20 or newer (24 recommended, see `.nvmrc`), npm, and Python 3 for the demo build.
+Requirements: Node.js 22.12 or newer (24 recommended, see `.nvmrc`), npm, and Python 3 for the demo build.
 
 ```bash
 # Terminal 1: the API on port 3001. The first start creates backend/data/ with the admin PIN 0000.
@@ -53,18 +53,18 @@ Checks (CI runs the same on every push and pull request):
 ```bash
 cd backend && npm test                    # API tests against a fresh temporary database
 cd frontend && npm run lint               # ESLint, no warnings allowed
-cd frontend && CI=true npm test           # component and unit tests
-cd frontend && CI=true npm run build      # production build
+cd frontend && npm test                   # component and unit tests (Vitest)
+cd frontend && npm run build              # production build (Vite), into frontend/build
 ```
 
 ## Project layout
 
 | Path | What |
 |---|---|
-| `backend/server.js` | The whole API (Express): login and throttling, sessions, write queue, backups, audit log, import/export |
+| `backend/server.js` | The whole API (Express 5): login and throttling, sessions, write queue, backups, audit log, import/export |
 | `backend/test.js` | API tests, one sequential script against a real server on a random port |
 | `backend/set-pin.js` | Sets a PIN directly in the data file (e.g. a lost admin PIN) |
-| `frontend/src/` | The pages (React 19, Tailwind 3): `MemberApp.js`, `AdminApp.js`, `AmountSheet.js`, `SettingsPage.js`, shared parts in `ui.js` and `lib.js`, texts in `i18n/` |
+| `frontend/src/` | The pages (React 19, Tailwind 4, built with Vite): `MemberApp.jsx`, `AdminApp.jsx`, `AmountSheet.jsx`, `SettingsPage.jsx`, shared parts in `ui.jsx` and `lib.js`, texts in `i18n/` |
 | `frontend/src/demo.js` | The API in the browser, for the demo build |
 | `frontend/public/.htaccess` | Rewrites and security headers (Content-Security-Policy) for Apache |
 | `tools/pin-mail/` | Sends every member their PIN by mail (German) |
