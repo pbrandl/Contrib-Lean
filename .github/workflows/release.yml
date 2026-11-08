@@ -1,0 +1,52 @@
+# A published GitHub release gets the deploy zip (see DEPLOY.md) and the demo page attached.
+# Release: create a tag vX.Y.Z on main and publish a release for it; the notes come from
+# CHANGELOG.md by hand.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Version in package.json matches the tag
+        run: |
+          for dir in backend frontend; do
+            version=$(node -p "require('./$dir/package.json').version")
+            test "v$version" = "$TAG" || { echo "$dir/package.json has $version, tag is $TAG"; exit 1; }
+          done
+          grep -q "VERSION = '${TAG#v}'" frontend/src/version.js || { echo "frontend/src/version.js does not say ${TAG#v}"; exit 1; }
+      - name: Backend tests
+        working-directory: backend
+        run: npm ci && npm test
+      - name: Frontend tests and demo
+        working-directory: frontend
+        env:
+          CI: true
+        run: npm ci && npm test && npm run build:demo
+      - name: Deploy zip, the same layout DEPLOY.md expects
+        run: git archive --format=zip --prefix="fundraiser-app-$TAG/" -o "fundraiser-app-$TAG.zip" HEAD
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp frontend/build-demo/bietrunde-demo.html "bietrunde-demo-$TAG.html"
+          gh release upload "$TAG" "fundraiser-app-$TAG.zip" "bietrunde-demo-$TAG.html" --clobber

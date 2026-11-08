@@ -1,21 +1,95 @@
-# Bietrunde – FRANZ!werk Tübingen
+# Bietrunde
 
-Version 2.0.2. Members open https://franz.uber.space, pick their name, log in with their PIN and set
-their bid (euros netto, with cents) and their hours per month (no target) on a full-screen sheet: a
-keypad on phones and tablets, a text field on computers. The settings switch the display between
-netto and brutto (× 1.19); sums are always netto, and a bid typed brutto is kept exactly as typed.
-Admins manage members (a tap on a name changes name and PIN), the target ("Bedarf") and import/export
-(XLSX, CSV or JSON; the import recognises the type by itself) at https://franz.uber.space/admin.
+[![CI](https://github.com/pbrandl/Contrib-Lean/actions/workflows/ci.yml/badge.svg)](https://github.com/pbrandl/Contrib-Lean/actions/workflows/ci.yml)
 
-A gear on every page opens the settings of this device: light, dark or system appearance, the
-language (German, English, Spanish; the browser's language at first) and netto or brutto amounts.
+A web app for a *Bietrunde* (pledge round) of a community project: at a members' meeting everybody
+picks their name on their phone, logs in with a PIN and pledges a monthly amount and the hours they
+can give. The total grows live against the target; who pledged what stays anonymous. Built for and
+used by the FRANZ!werk Tübingen (https://franz.uber.space).
 
-- `DEPLOY.md` (German): how to install a new version on the Uberspace, with the way back.
-- `CHANGELOG.md` (German): what each version changed.
-- `CLAUDE.md`: architecture, invariants and the agreed UI spec, for anyone changing the code.
-- `tools/pin-mail/` (German): sends every member their PIN by mail.
+<p>
+  <img src="docs/screenshots/names.png" width="240" alt="Name list on the start page">
+  <img src="docs/screenshots/member.png" width="240" alt="Member page with the own pledge and the totals">
+  <img src="docs/screenshots/sheet.png" width="240" alt="Keypad sheet for the pledge">
+</p>
+<img src="docs/screenshots/admin-dark.png" width="740" alt="Admin page in dark mode">
 
-## Layout on the Uberspace
+## Features
+
+- **Members:** pick the name, log in with a 4–8 digit PIN, set the pledge (euros with cents) and the hours per month on a full-screen sheet: the page's own keypad on phones and tablets, the keyboard on computers. A pledge replaces the previous one; 0 withdraws it.
+- **Live totals:** sum against the target, progress bar, number of pledges and hours, refreshed every few seconds on every phone.
+- **Admin** (`/admin`): add, rename and delete members, set PINs, set the target, export and import (XLSX, CSV or JSON; the import recognises the type by itself). The admin sees no single pledges outside the export.
+- **Settings on every page:** light, dark or system appearance; German, English or Spanish; amounts net or gross (19 % VAT). A pledge typed gross is kept exactly as typed.
+- **Built for a full room on one WLAN:** login throttling per device, network and account that never locks out the meeting, a write queue with atomic writes, hourly and daily backups, an audit log of every change.
+- **Small to run:** one Node process, one JSON file, static files for the pages. No database, no external services.
+
+## Try it
+
+The demo runs entirely in the browser, with 24 made-up members (PIN `1234`, admin PIN `0000`):
+
+```bash
+cd frontend
+npm ci
+npm run build:demo        # writes frontend/build-demo/bietrunde-demo.html, open it in a browser
+```
+
+Every [release](https://github.com/pbrandl/Contrib-Lean/releases) has that page attached as well.
+
+## Development
+
+Requirements: Node.js 20 or newer (24 recommended, see `.nvmrc`), npm, and Python 3 for the demo build.
+
+```bash
+# Terminal 1: the API on port 3001. The first start creates backend/data/ with the admin PIN 0000.
+cd backend
+npm ci
+node server.js
+
+# Terminal 2: the pages on http://localhost:3000 (admin: /admin), /api goes to the backend.
+cd frontend
+npm ci
+npm start
+```
+
+For example data, import `docs/beispieldaten.csv` on the admin page (24 members, PIN `1234`).
+
+Checks (CI runs the same on every push and pull request):
+
+```bash
+cd backend && npm test                    # API tests against a fresh temporary database
+cd frontend && npm run lint               # ESLint, no warnings allowed
+cd frontend && CI=true npm test           # component and unit tests
+cd frontend && CI=true npm run build      # production build
+```
+
+## Project layout
+
+| Path | What |
+|---|---|
+| `backend/server.js` | The whole API (Express): login and throttling, sessions, write queue, backups, audit log, import/export |
+| `backend/test.js` | API tests, one sequential script against a real server on a random port |
+| `backend/set-pin.js` | Sets a PIN directly in the data file (e.g. a lost admin PIN) |
+| `frontend/src/` | The pages (React 19, Tailwind 3): `MemberApp.js`, `AdminApp.js`, `AmountSheet.js`, `SettingsPage.js`, shared parts in `ui.js` and `lib.js`, texts in `i18n/` |
+| `frontend/src/demo.js` | The API in the browser, for the demo build |
+| `frontend/public/.htaccess` | Rewrites and security headers (Content-Security-Policy) for Apache |
+| `tools/pin-mail/` | Sends every member their PIN by mail (German) |
+| `docs/` | Example data and screenshots |
+
+## Documentation
+
+- [`CLAUDE.md`](CLAUDE.md): architecture, invariants of the write path and the login throttling, and the agreed UI spec. Read it before changing the code; it is written for people and coding agents alike.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): how to work on the code, the checks, dependencies and how a release is made.
+- [`DEPLOY.md`](DEPLOY.md) (German): installing a new version on the Uberspace, with the way back.
+- [`CHANGELOG.md`](CHANGELOG.md) (German): what each version changed.
+- [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
+
+## Releases
+
+A published GitHub release gets two files attached by the [release workflow](.github/workflows/release.yml): `fundraiser-app-vX.Y.Z.zip`, the deploy package `DEPLOY.md` expects, and `bietrunde-demo-vX.Y.Z.html`, the demo page. The steps are in `CONTRIBUTING.md`.
+
+## Operations (FRANZ!werk on the Uberspace)
+
+### Layout on the Uberspace
 
 | Part | Where |
 |---|---|
@@ -23,7 +97,7 @@ language (German, English, Spanish; the browser's language at first) and netto o
 | Data | `~/fundraiser-app/backend/data/` (see below) |
 | Frontend (React + Tailwind) | source in `~/fundraiser-app/frontend/src`, build served by Apache from `~/html` |
 
-### Data folder
+#### Data folder
 
 | File | Purpose |
 |---|---|
@@ -34,7 +108,7 @@ language (German, English, Spanish; the browser's language at first) and netto o
 | `backups/database-…-before-import.json` | state before every import |
 | `session-secret` | signs login sessions. Deleting it logs everybody out. |
 
-## Security model
+### Security model
 
 - PINs are 4–8 digits, stored as scrypt hashes, never sent to the browser, exported or logged.
 - Members the admin adds one by one get a random 4-digit start PIN, shown to the admin once. Members created by an import get the PIN from the file, otherwise the shared start PIN 1234 (everybody who knows it can log in to accounts that still use it; members should change it after their first login).
@@ -57,7 +131,7 @@ language (German, English, Spanish; the browser's language at first) and netto o
 - The pages send a strict Content-Security-Policy (no inline scripts; `frontend/.env` keeps the build free of them), refuse to be shown in frames of other sites and set `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`frontend/public/.htaccess`). The API sets its own headers.
 - All writes go through one queue, and the audit log is written inside it, in the order of the changes. A bid is sent as the new total, not as a step, so a page that gets no answer simply sends it again and nothing is doubled.
 
-## Common tasks
+### Common tasks
 
 Every command on its own line; never chain `rsync --delete` with other commands (a typo makes the last word its target, and `--delete` empties that folder).
 
@@ -131,13 +205,10 @@ cp ~/fundraiser-app/backend/data/backups/database-2026-10-12.json ~/fundraiser-a
 supervisorctl start fundraiser
 ```
 
-## Demo
+## Demo and the live server
 
-A demo without a server, with example members and neutral branding, runs entirely in the browser (`frontend/src/demo.js`; every visitor's changes stay in their own browser):
+The demo build replaces the API with `frontend/src/demo.js`, keeps every visitor's changes in their own browser and uses neutral branding. Do not put it on the live server: next to the real app it would lead visitors to the real member list.
 
-```bash
-cd frontend
-npm run build:demo
-```
+## License
 
-This writes one self-contained page, `frontend/build-demo/bietrunde-demo.html`, which is published as a Claude artifact. Do not put the demo on the live server: next to the real app it would lead visitors to the real member list.
+No license has been chosen yet. Until one is added, all rights are reserved by the author.

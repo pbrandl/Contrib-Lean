@@ -184,10 +184,13 @@ test('a bid without an answer is sent again', async () => {
   jest.useFakeTimers();
   server({ failFirst: true });
   render(<MemberApp />);
+  // Flushes the pending promises without moving the fake clock (findBy* would move it).
+  // eslint-disable-next-line testing-library/no-unnecessary-act
   await act(async () => {});
   fireEvent.click(screen.getByRole('button', { name: 'Beitrag ändern' }));
   type(screen.getByLabelText('Dein Beitrag in Euro'), ['0']);
   fireEvent.click(screen.getByRole('button', { name: /Speichern/ }));
+  // eslint-disable-next-line testing-library/no-unnecessary-act
   await act(async () => {});
   expect(screen.getByRole('button', { name: /Wird gespeichert/ })).toHaveAttribute('aria-busy', 'true');
   await act(async () => { jest.advanceTimersByTime(1000); });

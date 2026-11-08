@@ -1,0 +1,36 @@
+# Weekly update pull requests; CI decides whether they can be merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Express 5 changes routing and error handling: a deliberate migration, not a bump.
+      - dependency-name: express
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Deliberate migrations, not bumps: Tailwind 4 is a rewrite of the config, and
+      # react-scripts is unmaintained (the way out is Vite, see CONTRIBUTING.md).
+      - dependency-name: tailwindcss
+        update-types: [version-update:semver-major]
+      - dependency-name: react-scripts
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

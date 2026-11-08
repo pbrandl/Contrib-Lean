@@ -20,13 +20,24 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "lint": "eslint --max-warnings=0 src",
     "build:demo": "REACT_APP_DEMO=1 BUILD_PATH=build-demo PUBLIC_URL=. react-scripts build && python3 -I scripts/demo-inline.py build-demo build-demo/bietrunde-demo.html"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
+    ],
+    "overrides": [
+      {
+        "files": [
+          "src/**/*.test.js"
+        ],
+        "rules": {
+          "testing-library/no-node-access": "off",
+          "testing-library/no-container": "off"
+        }
+      }
     ]
   },
   "browserslist": {
@@ -43,6 +54,7 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.6.2",
+    "http-proxy-middleware": "^2.0.11",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.19"
   },
@@ -54,5 +66,8 @@
     "uuid": "^11.1.1",
     "@tootallnate/once": "^2.0.1",
     "postcss": "$postcss"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

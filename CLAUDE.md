@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. Current version: 2.0.0 (`CHANGELOG.md`). `README.md` has the operations guide (data folder, backups, PIN reset, restore), `DEPLOY.md` (German, for the owner) the way to install a new version.
+"Bietrunde" of the FRANZ!werk Tübingen: members pick their name, log in with a PIN and set a money bid (netto, with cents) and the hours per month they can contribute, each on a full-screen sheet (keypad on touch devices, text field on computers). Admins manage members, PINs, the target ("Bedarf") and import/export at `/admin`. Live at https://franz.uber.space on an Uberspace host. The current version is the top entry of `CHANGELOG.md`. `README.md` has the overview, local development and the operations guide (data folder, backups, PIN reset, restore), `CONTRIBUTING.md` the workflow and the release steps, `DEPLOY.md` (German, for the owner) the way to install a new version.
 
 - `backend/`: Express 4, everything in `server.js`, no database (one JSON file).
 - `frontend/`: Create React App (react-scripts 5) with React 19 and Tailwind 3.
@@ -19,8 +19,8 @@ Backend (`backend/`):
 ```bash
 npm ci
 node server.js                      # env: PORT (3001), HOST, DATA_DIR (./data)
-node test.js                        # copies data/database.json to a temp dir, starts the server on a random port
-node test.js /nonexistent           # same, but against a fresh database (admin PIN 0000)
+npm test                            # = node test.js /nonexistent: a fresh temporary database (admin PIN 0000)
+node test.js                        # against a temporary copy of data/database.json
 ```
 
 `test.js` is one sequential script: later checks reuse tokens and members from earlier ones, so a single check cannot run on its own. The admin checks log in with PIN `0000`. Against a copy of a real database where the admin PIN was changed they fail, so use a fresh database. It uses global `fetch` (Node 18+).
@@ -30,6 +30,8 @@ Frontend (`frontend/`):
 
 ```bash
 npm ci
+npm start                           # dev server on :3000; src/setupProxy.js forwards /api to :3001 (API_TARGET)
+npm run lint                        # ESLint over src, no warnings allowed
 CI=true npx react-scripts test --watchAll=false                      # all tests
 CI=true npx react-scripts test --watchAll=false src/csv.test.js      # one file
 CI=true npx react-scripts test --watchAll=false -t "round-trips"     # one test by name
@@ -38,7 +40,9 @@ CI=true npm run build               # ESLint runs inside the build; CI=true turn
 
 `frontend/.env` sets `INLINE_RUNTIME_CHUNK=false`. Keep it: the Content-Security-Policy in `public/.htaccess` forbids inline scripts, and without it the built `index.html` would contain one. It also sets `REACT_APP_DEMO=0`, so the flag is a build-time constant and the normal build drops the demo backend (and keeps the XLSX code as a lazy chunk, see `files.js`).
 
-There is no separate lint script. `npm start` has no dev proxy and the backend sends no CORS headers, so the dev server cannot reach the API. To run the whole app locally, serve the build from the backend's own `app`: require `backend/server.js`, add `express.static('frontend/build')` and a `/admin` route that sends `index.html`, then call `start()`.
+To run the whole app locally, start `node server.js` in `backend/` and `npm start` in `frontend/` (the backend sends no CORS headers; the dev proxy in `src/setupProxy.js` makes that unnecessary). The dev server does not send the Content-Security-Policy of `public/.htaccess`; the production build is checked for inline scripts in CI.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: backend tests and `npm audit` on Node 20, 22 and 24; frontend lint, tests, build, demo build and `npm audit --audit-level=critical` on Node 20 and 24. A published GitHub release runs `.github/workflows/release.yml`, which checks that the versions match the tag and attaches the deploy zip and the demo page. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests. The Uberspace runs Node 20 (end of life since April 2026); everything is tested on 24 as well, so the server can move to it (`uberspace tools version use node 24`).
 
 Demo (no server, example data, neutral branding; `src/demo.js` replaces the API in the browser when `REACT_APP_DEMO=1`):
 

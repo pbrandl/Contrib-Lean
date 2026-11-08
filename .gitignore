@@ -3,3 +3,6 @@ frontend/build/
 backend/data/
 *.zip
 frontend/build-demo/
+coverage/
+*.bundle
+.DS_Store

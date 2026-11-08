@@ -1,5 +1,15 @@
 # Änderungen
 
+## Unveröffentlicht
+
+Nur Werkzeuge und Doku, die App selbst ist unverändert; nichts neu einzuspielen.
+
+- CI auf GitHub: Bei jedem Push laufen die Tests, ESLint, beide Builds und `npm audit`, auf Node 20, 22 und 24.
+- Releases: Eine veröffentlichte GitHub-Release bekommt automatisch das Zip für `DEPLOY.md` und die Demo-Seite angehängt.
+- Dependabot schlägt jede Woche Paket-Updates vor.
+- Lokal entwickeln: `npm start` im Frontend leitet `/api` an das Backend weiter; `npm test` im Backend, `npm run lint` im Frontend.
+- README neu für alle, die das Projekt nicht kennen (mit Screenshots), dazu `CONTRIBUTING.md`, `SECURITY.md`, eine Vorlage für Pull Requests, `.editorconfig` und `.nvmrc`.
+
 ## 2.0.2 – 29.10.2026
 
 Keine neuen Pakete: beim Einspielen `node_modules` in beiden Ordnern kopieren (siehe `DEPLOY.md`).

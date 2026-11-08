@@ -27,9 +27,8 @@ test('PIN boxes: a box appears with each digit, the digit shows briefly and beco
   expect(screen.getByLabelText('PIN')).toHaveValue('7123456');
 
   fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }));
-  await act(async () => {});
+  expect(await screen.findByText('PIN falsch.')).toHaveAttribute('role', 'alert');
   expect(onSubmit).toHaveBeenCalledWith('7123456');
-  expect(screen.getByRole('alert')).toHaveTextContent('PIN falsch.');
   expect(boxes()).toHaveLength(0);
   jest.useRealTimers();
 });

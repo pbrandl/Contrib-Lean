@@ -1,0 +1,8 @@
+* text=auto eol=lf
+# Example data the way Excel writes it: keep the CRLF line ends.
+*.csv text eol=crlf
+*.png binary
+*.webp binary
+# Not needed on the server: left out of the deploy zip (git archive).
+.github export-ignore
+docs/screenshots export-ignore
