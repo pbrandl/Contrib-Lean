@@ -95,7 +95,8 @@ const smallJson = express.json({ limit: '16kb' });
 const importJson = express.json({ limit: '1mb' });
 app.use((req, res, next) => (req.path === IMPORT_PATH ? next() : smallJson(req, res, next)));
 
-// Uberspace forwards /api with the full path, so all routes live under /api.
+// Uberspace forwards /api with the full path, so all routes live under /api. Express 5 hands
+// errors thrown in async handlers (and rejected promises) to the error handler below.
 const api = express.Router();
 
 // `code` and `params` let the page show the message in its own language (frontend/src/i18n);
@@ -114,8 +115,6 @@ class HttpError extends Error {
 const whereText = (where) => (where ? `${where.line ? `Zeile ${where.line}` : `Eintrag ${where.entry}`}: ` : '');
 const FIELD_LABELS = { bid: 'Der Beitrag', amount: 'Der Betrag', gross: 'Der Bruttobetrag', target: 'Der Bedarf', hours: 'Die Stunden' };
 
-// Express 4 does not catch rejected promises, so async handlers are wrapped.
-const handle = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const isAdminId = (id) => id === 'admin';
@@ -412,7 +411,7 @@ function issueSession(user) {
 }
 
 function authenticate(role) {
-  return handle(async (req, res, next) => {
+  return async (req, res, next) => {
     const header = req.get('Authorization') || '';
     const session = readSession(header.startsWith('Bearer ') ? header.slice(7) : '');
     if (!session || session.role !== role) throw new HttpError(401, 'Bitte melde dich neu an.', 0, 'session_expired');
@@ -422,7 +421,7 @@ function authenticate(role) {
     req.user = user;
     req.data = data;
     next();
-  });
+  };
 }
 
 function findUserOrLogout(data, userId) {
@@ -706,15 +705,15 @@ api.get('/health', (req, res) => {
 });
 
 // Front page: names for the login list plus the overall progress. No PINs, no single bids.
-api.get('/public', handle(async (req, res) => {
+api.get('/public', async (req, res) => {
   const data = await readDatabase();
   res.json({
     ...summary(data),
     members: data.users.filter(u => !isAdminId(u.id)).map(u => ({ id: u.id, name: u.name }))
   });
-}));
+});
 
-api.post('/login', handle(async (req, res) => {
+api.post('/login', async (req, res) => {
   const { userId, pin, device, trust } = req.body || {};
   if (typeof userId !== 'string' || !userId) throw new HttpError(400, 'Ungültige Anfrage.', 0, 'bad_request');
   requirePin(pin); // can never match: no scrypt, no failure
@@ -760,7 +759,7 @@ api.post('/login', handle(async (req, res) => {
   if (isAdminId(user.id)) trustedNetworks.set(network, Date.now() + TRUSTED_NETWORK_MS);
   await audit('login', { userId: user.id, trusted, ...requestInfo(req) });
   res.json({ ...issueSession(user), trust: deviceId ? issueTrust(user, deviceId) : undefined });
-}));
+});
 
 // Member routes
 
@@ -783,14 +782,14 @@ function limitWrites(req, res, next) {
   next();
 }
 
-api.get('/me', memberOnly, handle(async (req, res) => {
+api.get('/me', memberOnly, async (req, res) => {
   res.json(memberView(req.data, req.user));
-}));
+});
 
 // The member sets the bid as a fixed amount with the keypad or the text field: netto as
 // {amount}, or brutto as {gross} (then netto is derived and the brutto amount stays leading).
 // Setting the same amount twice changes nothing, so a page may simply send it again.
-api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => {
+api.put('/me/contribution', memberOnly, limitWrites, async (req, res) => {
   const body = req.body || {};
   const gross = body.gross !== undefined ? requireAmount(body.gross, 'bid') : 0;
   const amount = body.gross !== undefined ? toNet(gross) : requireAmount(body.amount, 'bid');
@@ -802,10 +801,10 @@ api.put('/me/contribution', memberOnly, limitWrites, handle(async (req, res) => 
     return user;
   });
   res.json(memberView(data, result));
-}));
+});
 
 // Hours are set as an absolute value from a text field (not counted up like bids).
-api.put('/me/hours', memberOnly, limitWrites, handle(async (req, res) => {
+api.put('/me/hours', memberOnly, limitWrites, async (req, res) => {
   const hours = requireHours(req.body && req.body.hours);
   const { data, result } = await mutate((data, log) => {
     const user = findUserOrLogout(data, req.user.id);
@@ -815,9 +814,9 @@ api.put('/me/hours', memberOnly, limitWrites, handle(async (req, res) => {
     return user;
   });
   res.json(memberView(data, result));
-}));
+});
 
-api.put('/me/pin', memberOnly, limitWrites, handle(async (req, res) => {
+api.put('/me/pin', memberOnly, limitWrites, async (req, res) => {
   const pin = requirePin(req.body && req.body.pin);
   const deviceId = deviceIdOf(req.body.device);
   const hash = await hashPinLimited(req, pin);
@@ -832,19 +831,19 @@ api.put('/me/pin', memberOnly, limitWrites, handle(async (req, res) => {
     session: issueSession(result),
     trust: deviceId ? issueTrust(result, deviceId) : undefined
   });
-}));
+});
 
 // Admin routes
 
 const adminOnly = authenticate('admin');
 
-api.get('/admin/data', adminOnly, handle(async (req, res) => {
+api.get('/admin/data', adminOnly, async (req, res) => {
   res.json(adminView(req.data));
-}));
+});
 
 // New members get a random start PIN, shown to the admin once in `added.startPin`
 // (never stored in plain text or logged). An explicit `pin` in the request is used as is.
-api.post('/admin/users', adminOnly, handle(async (req, res) => {
+api.post('/admin/users', adminOnly, async (req, res) => {
   const name = requireName(req.body && req.body.name);
   const chosen = req.body && req.body.pin ? requirePin(req.body.pin) : null;
   const pin = chosen || randomStartPin();
@@ -864,9 +863,9 @@ api.post('/admin/users', adminOnly, handle(async (req, res) => {
     ...adminView(data),
     added: { id: result.id, name: result.name, defaultPin: result.defaultPin, startPin: chosen ? undefined : pin }
   });
-}));
+});
 
-api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
+api.delete('/admin/users/:userId', adminOnly, async (req, res) => {
   const { userId } = req.params;
   if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto kann nicht gelöscht werden.', 0, 'admin_not_deletable');
   const { data } = await mutate((data, log) => {
@@ -883,10 +882,10 @@ api.delete('/admin/users/:userId', adminOnly, handle(async (req, res) => {
   clearFailedLogins(userId);
   writeBudgets.delete(userId);
   res.json(adminView(data));
-}));
+});
 
 // The admin can set the PIN of every account, including their own.
-api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
+api.put('/admin/users/:userId/pin', adminOnly, async (req, res) => {
   const pin = requirePin(req.body && req.body.pin);
   const hash = await hashPinLimited(req, pin);
   const { data, result } = await mutate(async (data, log) => {
@@ -903,11 +902,11 @@ api.put('/admin/users/:userId/pin', adminOnly, handle(async (req, res) => {
     session: isAdminId(result.id) ? issueSession(result) : undefined,
     trust: deviceId ? issueTrust(result, deviceId) : undefined
   });
-}));
+});
 
 // Change a member: the name, the PIN or both, in one write. A new PIN ends the member's
 // sessions and lifts their login locks, like PUT .../pin.
-api.patch('/admin/users/:userId', adminOnly, handle(async (req, res) => {
+api.patch('/admin/users/:userId', adminOnly, async (req, res) => {
   const { userId } = req.params;
   const body = req.body || {};
   if (isAdminId(userId)) throw new HttpError(400, 'Das Admin-Konto lässt sich hier nicht ändern.', 0, 'admin_not_editable');
@@ -932,9 +931,9 @@ api.patch('/admin/users/:userId', adminOnly, handle(async (req, res) => {
   });
   if (pin) clearFailedLogins(userId);
   res.json(adminView(data));
-}));
+});
 
-api.put('/admin/target', adminOnly, handle(async (req, res) => {
+api.put('/admin/target', adminOnly, async (req, res) => {
   const targetAmount = requireAmount(req.body && req.body.targetAmount, 'target');
   if (targetAmount <= 0) throw new HttpError(400, 'Der Bedarf muss größer als 0 sein.', 0, 'target_positive');
   const { data } = await mutate((data, log) => {
@@ -942,10 +941,10 @@ api.put('/admin/target', adminOnly, handle(async (req, res) => {
     data.targetAmount = targetAmount;
   });
   res.json(adminView(data));
-}));
+});
 
 // Exports never contain PINs or PIN hashes.
-api.get('/admin/export', adminOnly, handle(async (req, res) => {
+api.get('/admin/export', adminOnly, async (req, res) => {
   const data = req.data;
   res.json({
     users: data.users.filter(u => !isAdminId(u.id)).map(u => ({ id: u.id, name: u.name })),
@@ -957,7 +956,7 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
     targetAmount: data.targetAmount,
     exportDate: new Date().toISOString()
   });
-}));
+});
 
 // Replaces all members and bids (the admin account stays). Members are matched to
 // existing ones by id or name: without a PIN in the file they keep their PIN,
@@ -966,7 +965,7 @@ api.get('/admin/export', adminOnly, handle(async (req, res) => {
 // that every JavaScript object already has.
 const usableId = (id) => ID_PATTERN.test(id) && !isAdminId(id) && !(id in Object.prototype);
 
-api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
+api.post('/admin/import', adminOnly, importJson, async (req, res) => {
   const body = req.body || {};
   if (!Array.isArray(body.users)) throw new HttpError(400, 'Die Datei enthält keine Mitgliederliste.', 0, 'import_no_list');
   if (body.users.length > MAX_IMPORT_ENTRIES) {
@@ -1061,7 +1060,7 @@ api.post('/admin/import', adminOnly, importJson, handle(async (req, res) => {
     return { count: users.length };
   });
   res.json({ ...adminView(data), imported: result.count });
-}));
+});
 
 api.use((req, res) => {
   res.status(404).json({ error: 'Unbekannte Adresse.', code: 'unknown_route' });
@@ -1094,8 +1093,10 @@ async function start() {
   await initDatabase();
   await loadSessionSecret();
   await migrateDatabase();
-  return new Promise((resolve) => {
-    const server = app.listen(PORT, process.env.HOST, () => {
+  return new Promise((resolve, reject) => {
+    // Express 5 passes listen errors (e.g. the port is taken) to the callback.
+    const server = app.listen(PORT, process.env.HOST, (error) => {
+      if (error) return reject(error);
       console.log(`Server running on port ${server.address().port}`);
       console.log(`API available at http://localhost:${server.address().port}/api`);
       resolve(server);
