@@ -1,9 +1,9 @@
-// Demo mode (REACT_APP_DEMO=1): the whole backend runs in the browser with example data,
+// Demo mode (`vite build --mode demo`): the whole backend runs in the browser with example data,
 // so the app can be shown without a server. Every visitor gets the same start data; what
 // they change stays in their own browser (localStorage) until "reset demo".
 // It mirrors the routes and responses of backend/server.js that the frontend uses.
 
-export const DEMO = process.env.REACT_APP_DEMO === '1';
+export const DEMO = import.meta.env.MODE === 'demo';
 export const DEMO_PIN = '1234';
 export const DEMO_ADMIN_PIN = '0000';
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEMO, demoApi } from './demo';
 import { hasMessage, language, locale, t } from './i18n';
 
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // A request that gets no answer within this time fails, so a page never hangs.
 export const TIMEOUT_MS = 15000;

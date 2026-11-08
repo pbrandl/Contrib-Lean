@@ -22,7 +22,7 @@ function server({ failFirst = false, errorFirst = null, hold = null } = {}) {
   let state = me(1585, 1);
   let failed = !failFirst;
   let errored = !errorFirst;
-  global.fetch = jest.fn((url, options = {}) => {
+  globalThis.fetch = vi.fn((url, options = {}) => {
     if (url === '/api/public') return respond({ ...state, members: [{ id: '7', name: 'Anna' }] });
     if (options.method === 'PUT') {
       if (!failed) {
@@ -53,10 +53,10 @@ function server({ failFirst = false, errorFirst = null, hold = null } = {}) {
   });
 }
 
-const puts = () => global.fetch.mock.calls.filter(([, o]) => o && o.method === 'PUT').map(([url, o]) => [url, JSON.parse(o.body)]);
+const puts = () => globalThis.fetch.mock.calls.filter(([, o]) => o && o.method === 'PUT').map(([url, o]) => [url, JSON.parse(o.body)]);
 
 const touch = (coarse) => {
-  window.matchMedia = jest.fn(query => ({ matches: coarse && query === '(pointer: coarse)', media: query }));
+  window.matchMedia = vi.fn(query => ({ matches: coarse && query === '(pointer: coarse)', media: query }));
 };
 
 const type = (input, keys) => keys.forEach(key => fireEvent.keyDown(input, { key }));
@@ -181,7 +181,7 @@ test('Esc closes the sheet without saving', async () => {
 });
 
 test('a bid without an answer is sent again', async () => {
-  jest.useFakeTimers();
+  vi.useFakeTimers();
   server({ failFirst: true });
   render(<MemberApp />);
   // Flushes the pending promises without moving the fake clock (findBy* would move it).
@@ -193,10 +193,10 @@ test('a bid without an answer is sent again', async () => {
   // eslint-disable-next-line testing-library/no-unnecessary-act
   await act(async () => {});
   expect(screen.getByRole('button', { name: /Wird gespeichert/ })).toHaveAttribute('aria-busy', 'true');
-  await act(async () => { jest.advanceTimersByTime(1000); });
+  await act(async () => { vi.advanceTimersByTime(1000); });
   expect(await screen.findByText('Dein Beitrag ist jetzt 15.850 €.')).toBeInTheDocument();
   expect(puts()).toEqual([['/api/me/contribution', { amount: 15850 }], ['/api/me/contribution', { amount: 15850 }]]);
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 test('desktop: after a failed save the field keeps the focus, and keys typed elsewhere still reach it', async () => {
@@ -265,22 +265,22 @@ test('a save that ends after logging out changes nothing on the next page', asyn
 });
 
 test('while the server is stopped the maintenance page shows and goes back to the page on its own', async () => {
-  jest.useFakeTimers();
+  vi.useFakeTimers();
   server();
-  const answer = global.fetch.getMockImplementation();
+  const answer = globalThis.fetch.getMockImplementation();
   let down = true;
   // The Uberspace proxy answers with an HTML page, not JSON.
-  global.fetch.mockImplementation((url, options) => (down
+  globalThis.fetch.mockImplementation((url, options) => (down
     ? Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) })
     : answer(url, options)));
   render(<MemberApp />);
   expect(await screen.findByRole('heading', { name: 'Gleich wieder da' })).toBeInTheDocument();
   expect(screen.getByText(/Deine Gebote sind gespeichert/)).toBeInTheDocument();
   down = false;
-  await act(async () => { jest.advanceTimersByTime(5000); });
+  await act(async () => { vi.advanceTimersByTime(5000); });
   expect(await screen.findByTestId('own-amount')).toHaveTextContent('1.585');
   expect(screen.queryByRole('heading', { name: 'Gleich wieder da' })).not.toBeInTheDocument();
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 test('the back arrow and the browser\'s back button both leave the member page', async () => {

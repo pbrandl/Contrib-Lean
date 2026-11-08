@@ -2,70 +2,49 @@
   "name": "frontend",
   "version": "2.0.2",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint --max-warnings=0 .",
+    "build:demo": "vite build --mode demo && python3 -I scripts/demo-inline.py build-demo build-demo/bietrunde-demo.html"
+  },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
-    "@testing-library/dom": "^10.4.2",
-    "@testing-library/jest-dom": "^7.0.1",
-    "@testing-library/react": "^16.3.3",
     "fflate": "0.8.3",
     "lucide-react": "^1.70.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "react-scripts": "5.0.1"
-  },
-  "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "lint": "eslint --max-warnings=0 src",
-    "build:demo": "REACT_APP_DEMO=1 BUILD_PATH=build-demo PUBLIC_URL=. react-scripts build && python3 -I scripts/demo-inline.py build-demo build-demo/bietrunde-demo.html"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ],
-    "overrides": [
-      {
-        "files": [
-          "src/**/*.test.js"
-        ],
-        "rules": {
-          "testing-library/no-node-access": "off",
-          "testing-library/no-container": "off"
-        }
-      }
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@vitejs/plugin-react": "^6.2.1",
     "autoprefixer": "^10.6.2",
-    "http-proxy-middleware": "^2.0.11",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-testing-library": "^7.16.2",
+    "globals": "^17.14.0",
+    "jsdom": "^31.0.0",
     "postcss": "^8.5.32",
-    "tailwindcss": "^3.4.19"
-  },
-  "overrides": {
-    "nth-check": "^2.1.1",
-    "svgo": "^2.8.4",
-    "serialize-javascript": "^7.1.4",
-    "underscore": "^1.13.8",
-    "uuid": "^11.1.1",
-    "@tootallnate/once": "^2.0.1",
-    "postcss": "$postcss"
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.5"
+    }
   }
 }

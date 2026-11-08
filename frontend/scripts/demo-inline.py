@@ -2,8 +2,8 @@
 import base64, glob, os, re, sys
 build = sys.argv[1]
 out = sys.argv[2]
-css_path = glob.glob(os.path.join(build, 'static/css/main.*.css'))[0]
-js_path = glob.glob(os.path.join(build, 'static/js/main.*.js'))[0]
+css_path = glob.glob(os.path.join(build, 'assets/index-*.css'))[0]
+js_path = glob.glob(os.path.join(build, 'assets/index-*.js'))[0]
 css = open(css_path, encoding='utf-8').read()
 
 # Keep only the latin font subsets (German needs nothing else).
@@ -33,7 +33,7 @@ page = f'''<meta charset="utf-8">
 <style>{css}</style>
 <noscript>Bitte aktiviere JavaScript, um die Demo zu sehen.</noscript>
 <div id="root"></div>
-<script>{js}</script>
+<script type="module">{js}</script>
 '''
 open(out, 'w', encoding='utf-8').write(page)
 print(len(page) // 1024, 'KB')

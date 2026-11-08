@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
@@ -39,8 +39,6 @@ jobs:
         run: npm ci && npm test
       - name: Frontend tests and demo
         working-directory: frontend
-        env:
-          CI: true
         run: npm ci && npm test && npm run build:demo
       - name: Deploy zip, the same layout DEPLOY.md expects
         run: git archive --format=zip --prefix="fundraiser-app-$TAG/" -o "fundraiser-app-$TAG.zip" HEAD

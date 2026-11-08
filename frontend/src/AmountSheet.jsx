@@ -179,7 +179,7 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
     );
   } else {
     const preview = unchanged ? me.totalHours : me.totalHours - me.hours + next;
-    total = `${formatHours(round1(preview))} h`;
+    total = `${formatHours(round1(preview))}\u00a0h`;
     of = t('progress.perMonth');
   }
 
@@ -187,6 +187,9 @@ export default function AmountSheet({ kind, keypad, me, mode, busy, waiting = fa
   const size = text.length >= 9 ? ' len-l' : text.length >= 7 ? ' len-m' : '';
 
   return (
+    // A click anywhere on the sheet puts the cursor back into the amount field (computers);
+    // the field itself is reachable by keyboard.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div className="sheet on-dark" role="dialog" aria-modal="true" aria-labelledby="sheet-title" onMouseDown={onSheetMouseDown}>
       <div className={`sheet-inner${keypad ? ' with-keypad' : ''}`}>
         <div className="sheet-head flex items-center gap-1">

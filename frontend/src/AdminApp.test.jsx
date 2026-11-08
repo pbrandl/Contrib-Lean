@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 test('adding a member shows the random start PIN until the admin closes it', async () => {
-  global.fetch = jest.fn((url, options) => {
+  globalThis.fetch = vi.fn((url, options) => {
     if (url === '/api/admin/users' && options.method === 'POST') {
       return respond({ ...state([{ id: '1', name: 'Anna', defaultPin: true }]), added: { id: '1', name: 'Anna', defaultPin: true, startPin: '4821' } });
     }
@@ -31,7 +31,7 @@ test('adding a member shows the random start PIN until the admin closes it', asy
 });
 
 test('the member list is folded away, and the netto/brutto setting changes only the display', async () => {
-  global.fetch = jest.fn(() => respond({ ...state([{ id: '1', name: 'Anna', defaultPin: true }, { id: '2', name: 'Ben', defaultPin: false }]), totalRaised: 1000 }));
+  globalThis.fetch = vi.fn(() => respond({ ...state([{ id: '1', name: 'Anna', defaultPin: true }, { id: '2', name: 'Ben', defaultPin: false }]), totalRaised: 1000 }));
   render(<AdminApp />);
   const head = await screen.findByRole('button', { name: /Mitglieder/ });
   expect(head).toHaveTextContent('2 Mitglieder, 1 davon mit Start-PIN');
@@ -54,7 +54,7 @@ test('the member list is folded away, and the netto/brutto setting changes only 
 
 test('a tap on a member opens name and PIN; both are saved in one request', async () => {
   const users = [{ id: '1', name: 'Anna', defaultPin: true }, { id: '2', name: 'Ben', defaultPin: false }];
-  global.fetch = jest.fn((url, options = {}) => {
+  globalThis.fetch = vi.fn((url, options = {}) => {
     if (options.method === 'PATCH') {
       const body = JSON.parse(options.body);
       return respond(state(users.map(u => (u.id === '1' ? { ...u, name: body.name || u.name, defaultPin: false } : u))));
@@ -74,7 +74,7 @@ test('a tap on a member opens name and PIN; both are saved in one request', asyn
   fireEvent.change(screen.getByLabelText(/Neue PIN/), { target: { value: '24681357' } });
   fireEvent.click(editor.getByRole('button', { name: 'Speichern' }));
   expect(await screen.findByText('Name und PIN von Anna Becker sind gespeichert.')).toBeInTheDocument();
-  const patch = global.fetch.mock.calls.find(([, o]) => o && o.method === 'PATCH');
+  const patch = globalThis.fetch.mock.calls.find(([, o]) => o && o.method === 'PATCH');
   expect(patch[0]).toBe('/api/admin/users/1');
   expect(JSON.parse(patch[1].body)).toEqual({ name: 'Anna Becker', pin: '24681357' });
   expect(screen.getByText('Anna Becker')).toBeInTheDocument();
@@ -88,11 +88,11 @@ test('a tap on a member opens name and PIN; both are saved in one request', asyn
 
 test('export: Download on the left, the format on the right, remembered for next time', async () => {
   const exported = { users: [{ id: '1', name: 'Anna' }], contributions: { 1: 100 }, hours: {}, contributionsGross: {}, enteredAs: {} };
-  global.fetch = jest.fn((url) => respond(url === '/api/admin/export' ? exported : state([{ id: '1', name: 'Anna', defaultPin: false }])));
+  globalThis.fetch = vi.fn((url) => respond(url === '/api/admin/export' ? exported : state([{ id: '1', name: 'Anna', defaultPin: false }])));
   const files = [];
-  URL.createObjectURL = jest.fn((blob) => { files.push(blob); return 'blob:x'; });
-  URL.revokeObjectURL = jest.fn();
-  const clicked = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function click() { files.push(this.download); });
+  URL.createObjectURL = vi.fn((blob) => { files.push(blob); return 'blob:x'; });
+  URL.revokeObjectURL = vi.fn();
+  const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function click() { files.push(this.download); });
   render(<AdminApp />);
   const format = await screen.findByLabelText('Format');
   expect(format).toHaveValue('xlsx');
@@ -108,7 +108,7 @@ test('export: Download on the left, the format on the right, remembered for next
 });
 
 test('the browser\'s back button leaves the admin page to the admin PIN screen', async () => {
-  global.fetch = jest.fn(() => respond(state([])));
+  globalThis.fetch = vi.fn(() => respond(state([])));
   render(<AdminApp />);
   expect(await screen.findByRole('button', { name: /Mitglieder/ })).toBeInTheDocument();
   expect(window.history.state).toEqual({ admin: true });

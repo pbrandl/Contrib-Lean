@@ -1,11 +1,11 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { render } from './test-utils';
-import { PinLogin } from './ui';
+import { BusyButton, PinLogin } from './ui';
 
 test('PIN boxes: a box appears with each digit, the digit shows briefly and becomes a dot, at most 8', async () => {
-  jest.useFakeTimers();
-  window.matchMedia = jest.fn(query => ({ matches: query === '(pointer: coarse)', media: query }));
-  const onSubmit = jest.fn(() => Promise.reject(new Error('PIN falsch.')));
+  vi.useFakeTimers();
+  window.matchMedia = vi.fn(query => ({ matches: query === '(pointer: coarse)', media: query }));
+  const onSubmit = vi.fn(() => Promise.reject(new Error('PIN falsch.')));
   const { container } = render(<PinLogin title="Anna" onSubmit={onSubmit} />);
   const boxes = () => [...container.querySelectorAll('.pin-box:not(.pin-box-ghost)')];
   expect(boxes()).toHaveLength(0);
@@ -15,7 +15,7 @@ test('PIN boxes: a box appears with each digit, the digit shows briefly and beco
   expect(boxes()).toHaveLength(1);
   expect(boxes()[0]).toHaveTextContent('7');
   expect(boxes()[0]).toHaveClass('active');
-  act(() => { jest.advanceTimersByTime(800); });
+  act(() => { vi.advanceTimersByTime(800); });
   expect(boxes()[0].querySelector('.pin-dot')).not.toBeNull();
   expect(boxes()[0]).not.toHaveTextContent('7');
   expect(screen.getByRole('button', { name: 'Anmelden' })).toBeDisabled();
@@ -30,12 +30,12 @@ test('PIN boxes: a box appears with each digit, the digit shows briefly and beco
   expect(await screen.findByText('PIN falsch.')).toHaveAttribute('role', 'alert');
   expect(onSubmit).toHaveBeenCalledWith('7123456');
   expect(boxes()).toHaveLength(0);
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 test('PIN on computers: the next free box shows a blinking cursor while the field has the focus', () => {
-  window.matchMedia = jest.fn(query => ({ matches: false, media: query }));
-  const { container } = render(<PinLogin title="Anna" onSubmit={jest.fn()} />);
+  window.matchMedia = vi.fn(query => ({ matches: false, media: query }));
+  const { container } = render(<PinLogin title="Anna" onSubmit={vi.fn()} />);
   const field = screen.getByLabelText('PIN');
   const cursor = () => container.querySelector('.pin-box-cursor');
   expect(field).toHaveFocus();
@@ -59,9 +59,8 @@ test('PIN on computers: the next free box shows a blinking cursor while the fiel
 });
 
 test('busy button: looks the same at first, ignores clicks, shows a spinner only after 0.2 s', () => {
-  jest.useFakeTimers();
-  const { BusyButton } = require('./ui');
-  const click = jest.fn();
+  vi.useFakeTimers();
+  const click = vi.fn();
   const { container, rerender } = render(<BusyButton busy={false} busyLabel="Wird gespeichert" onClick={click}>Speichern</BusyButton>);
   fireEvent.click(screen.getByRole('button'));
   expect(click).toHaveBeenCalledTimes(1);
@@ -70,10 +69,10 @@ test('busy button: looks the same at first, ignores clicks, shows a spinner only
   expect(container.querySelector('.spinner')).toBeNull();
   fireEvent.click(screen.getByRole('button'));
   expect(click).toHaveBeenCalledTimes(1);
-  act(() => { jest.advanceTimersByTime(250); });
+  act(() => { vi.advanceTimersByTime(250); });
   expect(container.querySelector('.spinner')).not.toBeNull();
   expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
   rerender(<BusyButton busy={false} busyLabel="Wird gespeichert" onClick={click}>Speichern</BusyButton>);
   expect(container.querySelector('.spinner')).toBeNull();
-  jest.useRealTimers();
+  vi.useRealTimers();
 });

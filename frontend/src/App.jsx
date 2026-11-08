@@ -8,7 +8,7 @@ import { NotFoundPage } from './ui';
 
 // Apache serves index.html for /admin as well, and for every unknown address with
 // status 404 (see public/.htaccess).
-const base = process.env.PUBLIC_URL || '';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const pageOf = (path) => {
   const page = path.replace(/\/+$/, '');
   if (page === base || page === `${base}/index.html`) return 'member';

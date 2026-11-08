@@ -1,7 +1,7 @@
 import { readImportFile } from './files';
 import { readXlsx, writeXlsx } from './xlsx';
 
-const file = (content, name = 'f') => new Blob([content], { type: 'application/octet-stream' });
+const file = (content) => new Blob([content], { type: 'application/octet-stream' });
 
 test('XLSX: written with numbers and text, read back the same', () => {
   const bytes = writeXlsx([

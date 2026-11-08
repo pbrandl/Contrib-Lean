@@ -5,8 +5,8 @@ import { round2 } from './lib';
 // Export and import files. A new format: one entry in EXPORT_FORMATS and one case in
 // readImportFile; the admin page lists the formats from here.
 
-// The XLSX code is loaded only when needed; the demo is one single file, so it is built in there.
-const loadXlsx = () => (process.env.REACT_APP_DEMO === '1' ? Promise.resolve(require('./xlsx')) : import('./xlsx'));
+// The XLSX code is loaded only when needed (the demo build inlines it into its one script).
+const loadXlsx = () => import('./xlsx');
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 

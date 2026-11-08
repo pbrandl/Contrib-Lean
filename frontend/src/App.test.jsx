@@ -6,7 +6,7 @@ const respond = (body) => Promise.resolve({ ok: true, status: 200, json: () => P
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
-  global.fetch = jest.fn(() => respond({
+  globalThis.fetch = vi.fn(() => respond({
     rev: 1,
     totalRaised: 1250,
     targetAmount: 6500,
@@ -27,7 +27,7 @@ test('front page shows logo, progress and member list without PINs', async () =>
   const names = screen.getAllByRole('listitem').map(li => li.querySelector('button').textContent);
   expect(names).toEqual(['AAnna', 'SSteffen']);
   expect(screen.getByRole('button', { name: 'Anna' })).toBeInTheDocument();
-  expect(global.fetch).toHaveBeenCalledWith('/api/public', expect.anything());
+  expect(globalThis.fetch).toHaveBeenCalledWith('/api/public', expect.anything());
 });
 
 test('/admin shows the admin login', async () => {
@@ -42,5 +42,5 @@ test('an unknown address shows the not-found page with a link to the start', () 
   render(<App />);
   expect(screen.getByRole('heading', { name: 'Seite nicht gefunden' })).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Zur Bietrunde' })).toHaveAttribute('href', '/');
-  expect(global.fetch).not.toHaveBeenCalled();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });

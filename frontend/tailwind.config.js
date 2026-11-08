@@ -1,9 +1,10 @@
 const color = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
+    "./index.html",
+    "./src/**/*.{js,jsx}",
   ],
   // Dark mode: the class "dark" on <html> (settings.js), so the setting can override the device.
   darkMode: 'class',

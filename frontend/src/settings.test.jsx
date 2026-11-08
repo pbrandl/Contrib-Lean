@@ -5,13 +5,14 @@ import { render } from '@testing-library/react';
 import { setLanguage } from './i18n';
 import { NotFoundPage } from './ui';
 import { VERSION } from './version';
+import pkg from '../package.json';
 
 const respond = (body) => Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve(body) });
 
 beforeEach(() => {
   window.localStorage.clear();
   window.history.pushState({}, '', '/');
-  global.fetch = jest.fn(() => respond({ rev: 1, totalRaised: 1250, totalRaisedGross: 1487.5, targetAmount: 6500, contributorCount: 2, totalHours: 12.5, members: [{ id: '1', name: 'Anna' }] }));
+  globalThis.fetch = vi.fn(() => respond({ rev: 1, totalRaised: 1250, totalRaisedGross: 1487.5, targetAmount: 6500, contributorCount: 2, totalHours: 12.5, members: [{ id: '1', name: 'Anna' }] }));
 });
 afterEach(() => setLanguage('de'));
 
@@ -40,7 +41,7 @@ test('the settings page opens from the front page and switches language, theme a
 test('without saved settings: the browser language, the device theme and the netto/brutto choice of version 1', () => {
   Object.defineProperty(window.navigator, 'languages', { value: ['es-MX', 'en'], configurable: true });
   window.localStorage.setItem('franzwerk.mode', JSON.stringify('brutto'));
-  window.matchMedia = jest.fn(query => ({ matches: query === '(prefers-color-scheme: dark)', media: query, addEventListener: jest.fn(), removeEventListener: jest.fn() }));
+  window.matchMedia = vi.fn(query => ({ matches: query === '(prefers-color-scheme: dark)', media: query, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   renderWithSettings(<NotFoundPage />);
   expect(screen.getByText('Página no encontrada')).toBeInTheDocument();
   expect(document.documentElement).toHaveClass('dark');
@@ -52,5 +53,5 @@ test('without saved settings: the browser language, the device theme and the net
 });
 
 test('the version on the settings page is the one in package.json', () => {
-  expect(VERSION).toBe(require('../package.json').version);
+  expect(VERSION).toBe(pkg.version);
 });

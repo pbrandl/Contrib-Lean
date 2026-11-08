@@ -17,9 +17,9 @@ test('device id: 22 base64url characters, kept in localStorage, sent with every 
   expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
   expect(deviceId()).toBe(id);
   expect(JSON.parse(window.localStorage.getItem('franzwerk.device'))).toBe(id);
-  global.fetch = jest.fn(() => respond({ ok: true }));
+  globalThis.fetch = vi.fn(() => respond({ ok: true }));
   await api('/public');
-  expect(global.fetch.mock.calls[0][1].headers['X-Device']).toBe(id);
+  expect(globalThis.fetch.mock.calls[0][1].headers['X-Device']).toBe(id);
 });
 
 test('trusted-device credentials: newest first, one per account, at most 10', () => {
@@ -36,38 +36,38 @@ test('trusted-device credentials: newest first, one per account, at most 10', ()
 
 test('login sends device id and credential, stores the new credential, returns the session', async () => {
   rememberTrust('42', 'alt');
-  global.fetch = jest.fn(() => respond({ token: 'tok', role: 'member', user: { id: '42' }, trust: 'neu' }));
+  globalThis.fetch = vi.fn(() => respond({ token: 'tok', role: 'member', user: { id: '42' }, trust: 'neu' }));
   const session = await loginWithPin('42', '2580');
-  const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+  const body = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
   expect(body).toEqual({ userId: '42', pin: '2580', device: deviceId(), trust: 'alt' });
   expect(session).toEqual({ token: 'tok', role: 'member', user: { id: '42' } });
   expect(trustFor('42')).toBe('neu');
 });
 
 test('errors carry status, message and Retry-After', async () => {
-  global.fetch = jest.fn(() => respond({ error: 'Zu viele Fehlversuche.' }, 429, { 'retry-after': '60' }));
+  globalThis.fetch = vi.fn(() => respond({ error: 'Zu viele Fehlversuche.' }, 429, { 'retry-after': '60' }));
   await expect(api('/login', { method: 'POST', body: {} })).rejects.toMatchObject({ status: 429, message: 'Zu viele Fehlversuche.', retryAfter: 60 });
 });
 
 test('the proxy page of a stopped server counts as maintenance, the server\'s own 503 does not', async () => {
-  global.fetch = jest.fn(() => Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) }));
+  globalThis.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 502, headers: { get: () => null }, json: () => Promise.reject(new SyntaxError('HTML')) }));
   await expect(api('/public')).rejects.toMatchObject({ status: 502, maintenance: true, message: t('errors.maintenance') });
-  global.fetch = jest.fn(() => respond({ error: 'Der Server ist gerade ausgelastet.' }, 503));
+  globalThis.fetch = vi.fn(() => respond({ error: 'Der Server ist gerade ausgelastet.' }, 503));
   await expect(api('/login', { method: 'POST', body: {} })).rejects.toMatchObject({ status: 503, maintenance: false, message: 'Der Server ist gerade ausgelastet.' });
 });
 
 test('a request without an answer fails after the timeout', async () => {
-  jest.useFakeTimers();
-  global.fetch = jest.fn((url, { signal }) => new Promise((resolve, reject) => {
+  vi.useFakeTimers();
+  globalThis.fetch = vi.fn((url, { signal }) => new Promise((resolve, reject) => {
     signal.addEventListener('abort', () => reject(new Error('aborted')));
   }));
   const pending = api('/me');
-  jest.advanceTimersByTime(TIMEOUT_MS);
+  vi.advanceTimersByTime(TIMEOUT_MS);
   const error = await pending.catch(e => e);
   expect(error).toBeInstanceOf(ApiError);
   expect(error.status).toBe(0);
   expect(error.timeout).toBe(true);
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 test('responses: a newer rev wins, after a server restart (restored backup) the new state wins', () => {
