@@ -236,11 +236,11 @@ function MembersSection({ users, call, showNotice }) {
         )}
 
         {created.length > 0 && (
-          <div className="mt-4 space-y-3 rounded border-2 border-blau/30 bg-blau-hell p-4" role="status">
+          <div className="mt-4 space-y-3 rounded-sm border-2 border-blau/30 bg-blau-hell p-4" role="status">
             <ul className="space-y-2">
               {created.map(entry => (
                 <li key={entry.id}>
-                  <p className="break-words">{t('admin.members.added', { name: entry.name })}</p>
+                  <p className="wrap-break-word">{t('admin.members.added', { name: entry.name })}</p>
                   <p className="font-display text-4xl font-bold tracking-[0.3em]" data-testid="start-pin">{entry.pin}</p>
                 </li>
               ))}
@@ -267,7 +267,7 @@ function MembersSection({ users, call, showNotice }) {
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-2 text-tinte/60 hover:text-tinte"
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-2 text-tinte/60 hover:text-tinte"
                 aria-label={t('common.clearSearch')}
               >
                 <X className="h-5 w-5" aria-hidden="true" />
@@ -294,7 +294,7 @@ function MembersSection({ users, call, showNotice }) {
                     aria-controls={`edit-${user.id}`}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block break-words text-lg font-semibold">{user.name}</span>
+                      <span className="block wrap-break-word text-lg font-semibold">{user.name}</span>
                       {user.defaultPin && <span className="block text-tinte/70">{t('admin.members.startPin')}</span>}
                     </span>
                     <Pencil className="h-5 w-5 shrink-0 text-tinte/45" aria-hidden="true" />
@@ -369,7 +369,7 @@ function MemberEditor({ user, call, showNotice, onClose }) {
 
   if (confirmDelete) {
     return (
-      <div id={id} className="mb-3 space-y-3 rounded border-2 border-ziegel/30 p-4">
+      <div id={id} className="mb-3 space-y-3 rounded-sm border-2 border-ziegel/30 p-4">
         <p>{t('admin.edit.deleteQuestion', { name: user.name })}</p>
         <div className="flex gap-2">
           <BusyButton type="button" className="btn-ziegel flex-1" onClick={remove} busy={deleting} busyLabel={t('busy.deleting')}>
@@ -528,7 +528,7 @@ function DataSection({ memberCount, call, showNotice }) {
     setBusy(false);
   };
 
-  const fileButton = 'btn-rand cursor-pointer has-[:focus-visible]:outline has-[:focus-visible]:outline-[3px] has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-blau';
+  const fileButton = 'btn-rand cursor-pointer has-focus-visible:outline-solid has-focus-visible:outline-[3px] has-focus-visible:outline-offset-2 has-focus-visible:outline-blau';
 
   return (
     <section aria-labelledby="data-heading" className="border-t border-tinte/10 pt-6">
@@ -560,8 +560,8 @@ function DataSection({ memberCount, call, showNotice }) {
       {error && <p className="mt-3 font-semibold text-ziegel" role="alert">{error}</p>}
 
       {pending && (
-        <div className="mt-4 space-y-3 rounded border-2 border-ziegel/30 p-4">
-          <p className="break-words font-semibold">{pending.fileName}</p>
+        <div className="mt-4 space-y-3 rounded-sm border-2 border-ziegel/30 p-4">
+          <p className="wrap-break-word font-semibold">{pending.fileName}</p>
           <p>
             {t('admin.data.summary', { members: t('count.members', { count: pending.count }), total: formatEuro(pending.total) })}
             {pending.target ? t('admin.data.summaryTarget', { target: formatEuro(pending.target) }) : ''}.

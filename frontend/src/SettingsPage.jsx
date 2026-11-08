@@ -49,7 +49,7 @@ export default function SettingsPage() {
         </div>
       </header>
       <main className="wrap py-5">
-        <div className="card divide-y divide-tinte/10 px-4">
+        <div className="card px-4">
           {SETTINGS.map(setting => (
             <fieldset key={setting.key} className="setting">
               <legend className="setting-label">{t(`settings.${setting.key}.label`)}</legend>

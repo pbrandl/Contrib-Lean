@@ -203,7 +203,7 @@ function FrontPage({ onLogin }) {
                         <button
                           type="button"
                           onClick={() => choose(member)}
-                          className="group flex min-h-[3.25rem] w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-blau-hell"
+                          className="group flex min-h-13 w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-blau-hell"
                         >
                           <span
                             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-werkblau font-display text-base font-semibold text-gelb"
@@ -211,7 +211,7 @@ function FrontPage({ onLogin }) {
                           >
                             {initials(member.name)}
                           </span>
-                          <span className="min-w-0 flex-1 break-words text-[1.05rem] font-medium">{member.name}</span>
+                          <span className="min-w-0 flex-1 wrap-break-word text-[1.05rem] font-medium">{member.name}</span>
                           <ChevronRight className="h-5 w-5 shrink-0 text-tinte/30 transition-transform group-hover:translate-x-0.5 group-hover:text-blau" aria-hidden="true" />
                         </button>
                       </li>

@@ -1,12 +1,67 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/bricolage-grotesque';
+@import 'tailwindcss';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Dark mode: the class "dark" on <html> (settings.js), so the setting can override the device. */
+@custom-variant dark (&:is(.dark *));
+
+/* FRANZ!werk palette: logo yellow, the blues of franzwerk-tuebingen.de. The values are CSS
+   variables (:root and .dark below), so every class follows the theme. */
+@theme {
+  --color-gelb: rgb(var(--c-gelb));
+  --color-gelb-hell: rgb(var(--c-gelb-hell));
+  --color-werkblau: rgb(var(--c-werkblau));
+  --color-blau: rgb(var(--c-blau));
+  --color-blau-hell: rgb(var(--c-blau-hell));
+  --color-papier: rgb(var(--c-papier));
+  --color-tinte: rgb(var(--c-tinte));
+  --color-ziegel: rgb(var(--c-ziegel));
+  --color-gruen: rgb(var(--c-gruen));
+  /* surfaces on the page (cards, fields): white in light mode */
+  --color-flaeche: rgb(var(--c-flaeche));
+  /* text in the blue of the brand on light surfaces; lighter in dark mode */
+  --color-akzent: rgb(var(--c-akzent));
+
+  --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Inter Variable', system-ui, sans-serif;
+
+  --shadow-card: 0 1px 3px rgb(20 35 47 / 0.1), 0 12px 32px -14px rgb(20 35 47 / 0.32);
+}
+
+/* Defaults of Tailwind 3 that version 4 changed; the pages are designed with them. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: #e5e7eb;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Safari styles search fields its own way unless they look like text fields. */
+  [type='search'] {
+    -webkit-appearance: textfield;
+    appearance: textfield;
+    outline-offset: -2px;
+  }
+
+  ::-webkit-search-decoration {
+    -webkit-appearance: none;
+  }
+}
 
 @layer base {
-  /* The palette as RGB channels (tailwind.config.js reads them). Light, and dark below:
+  /* The palette as RGB channels (@theme above reads them). Light, and dark below:
      everything that uses these colours follows the theme. The dark blue screens (PIN, sheet,
      maintenance) and the header stay as they are in both. */
   :root {
@@ -35,20 +90,11 @@
     --c-akzent: 163 199 228;
   }
 
-  /* Text in ziegel red stays readable on the dark page; the banners keep the darker red. */
-  .dark .text-ziegel {
-    color: #F2937F;
-  }
-
-  .dark .border-ziegel\/30 {
-    border-color: rgb(242 147 127 / 0.35);
-  }
-
   /* Outside the page (rubber band, safe areas) the light page colour shows, never a blue
      strip below the content. Android and desktop browsers paint the top half blue; iOS uses
      one colour for both edges (the body's), so there the top shows the light colour too. */
   html {
-    background: theme('colors.papier') linear-gradient(theme('colors.werkblau'), theme('colors.werkblau')) top / 100% 50vh no-repeat;
+    background: var(--color-papier) linear-gradient(var(--color-werkblau), var(--color-werkblau)) top / 100% 50vh no-repeat;
     font-size: 106.25%;
     -webkit-text-size-adjust: 100%;
   }
@@ -62,12 +108,12 @@
   }
 
   :focus-visible {
-    outline: 3px solid theme('colors.blau');
+    outline: 3px solid var(--color-blau);
     outline-offset: 2px;
   }
 
   .on-dark :focus-visible {
-    outline-color: theme('colors.gelb');
+    outline-color: var(--color-gelb);
   }
 
   /* Inputs below 16px make iOS zoom into the page. */
@@ -124,24 +170,26 @@
     @apply rounded-2xl bg-flaeche shadow-card ring-1 ring-tinte/[0.07];
   }
 
+  /* The base of every button; Tailwind 4 cannot @apply a class of our own, so the buttons
+     below repeat this list. */
   .btn {
     @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .btn-blau {
-    @apply btn bg-werkblau text-white hover:bg-[#2A4C68];
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-werkblau text-white hover:bg-[#2A4C68];
   }
 
   .btn-rand {
-    @apply btn border border-tinte/15 bg-flaeche text-tinte hover:border-tinte/30 hover:bg-blau-hell;
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 border border-tinte/15 bg-flaeche text-tinte hover:border-tinte/30 hover:bg-blau-hell;
   }
 
   .btn-ziegel {
-    @apply btn bg-ziegel text-white hover:bg-[#8E2F1F];
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-ziegel text-white hover:bg-[#8E2F1F];
   }
 
   .field {
-    @apply block w-full rounded-xl border border-tinte/15 bg-flaeche px-4 py-3 text-tinte shadow-sm transition placeholder:text-tinte/45 focus:border-blau focus:outline-none focus:ring-4 focus:ring-blau/15;
+    @apply block w-full rounded-xl border border-tinte/15 bg-flaeche px-4 py-3 text-tinte shadow-xs transition placeholder:text-tinte/45 focus:border-blau focus:outline-hidden focus:ring-4 focus:ring-blau/15;
   }
 
   /* Page width with the 16 px side gutter (more on phones with rounded corners). */
@@ -928,10 +976,6 @@
     border-radius: 0.75rem;
   }
 
-  .member-row[aria-expanded='true'] svg {
-    @apply text-akzent;
-  }
-
   /* Download on the left, the format on the right, as one button. */
   .split-button {
     display: flex;
@@ -939,7 +983,7 @@
   }
 
   .split-main {
-    @apply btn flex-1 rounded-r-none bg-werkblau text-white hover:bg-[#2A4C68];
+    @apply inline-flex min-h-[3rem] items-center justify-center gap-2 rounded-xl px-4 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 flex-1 rounded-r-none bg-werkblau text-white hover:bg-[#2A4C68];
   }
 
   .split-pick {
@@ -961,6 +1005,27 @@
 
   .split-pick:hover {
     background: #2A4C68;
+  }
+
+  /* Below 360 px both halves did not fit next to each other (the admin page could be moved
+     sideways at 320 px): less padding, and the download icon goes. */
+  @media (max-width: 359px) {
+    .split-main {
+      padding-inline: 0.6rem;
+    }
+
+    .split-main svg {
+      display: none;
+    }
+
+    .split-pick select {
+      padding-left: 0.6rem;
+      padding-right: 1.75rem;
+    }
+
+    .split-pick svg {
+      right: 0.4rem;
+    }
   }
 
   .loading-page {
@@ -994,7 +1059,7 @@
 
   .demo-wordmark span {
     margin-top: 0.25rem;
-    font-family: theme('fontFamily.sans');
+    font-family: var(--font-sans);
     font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.24em;
@@ -1037,6 +1102,24 @@
     transform: rotate(180deg);
   }
 }
+
+/* Rules that change a Tailwind class (or an element that carries one) stay outside the layers:
+   Tailwind 4 puts its classes in a cascade layer, and a layered rule of ours would lose to them
+   however specific it is. */
+
+/* Text in ziegel red stays readable on the dark page; the banners keep the darker red. */
+.dark .text-ziegel {
+  color: #F2937F;
+}
+
+.dark .border-ziegel\/30 {
+  border-color: rgb(242 147 127 / 0.35);
+}
+
+.member-row[aria-expanded='true'] svg {
+  @apply text-akzent;
+}
+
 
 @keyframes sheet-in {
   from {

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // `vite build` builds the app for the server (build/, served by Apache from ~/html);
 // `vite build --mode demo` the demo without a server (build-demo/, turned into one page by
@@ -8,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const demo = mode === 'demo';
   const api = { '/api': process.env.API_TARGET || 'http://localhost:3001' };
   return {
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     base: demo ? './' : '/',
     server: { port: 3000, proxy: api },
     preview: { port: 3000, proxy: api },
