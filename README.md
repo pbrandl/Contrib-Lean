@@ -7,12 +7,7 @@ picks their name on their phone, logs in with a PIN and pledges a monthly amount
 can give. The total grows live against the target; who pledged what stays anonymous. Built for and
 used by the FRANZ!werk Tübingen (https://franz.uber.space).
 
-<p>
-  <img src="docs/screenshots/names.png" width="240" alt="Name list on the start page">
-  <img src="docs/screenshots/member.png" width="240" alt="Member page with the own pledge and the totals">
-  <img src="docs/screenshots/sheet.png" width="240" alt="Keypad sheet for the pledge">
-</p>
-<img src="docs/screenshots/admin-dark.png" width="740" alt="Admin page in dark mode">
+<img src="docs/screenshots/app.png" alt="Four phone screens: the name list on the start page, a member's own pledge with the live totals, the keypad for changing the pledge, and the admin page in dark mode">
 
 ## Features
 
