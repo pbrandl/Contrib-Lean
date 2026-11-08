@@ -23,7 +23,11 @@ css = re.sub(r'/\*# sourceMappingURL=.*?\*/', '', css)
 js = open(js_path, encoding='utf-8').read()
 js = re.sub(r'//# sourceMappingURL=.*', '', js).replace('</script', '<\\/script')
 
-page = f'''<title>Bietrunde Demo</title>
+# The artifact host wraps the page in its own document; charset and viewport make the file
+# work on its own too (a release attaches it, and phones would show it zoomed out without).
+page = f'''<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bietrunde Demo</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Bietrunde: Gebote und Stunden für ein Gemeinschaftsprojekt sammeln. Demo mit Beispieldaten.">
 <style>{css}</style>
