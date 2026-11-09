@@ -1,6 +1,6 @@
-# A published GitHub release gets the deploy zip (see DEPLOY.md) and the demo page attached.
-# Release: create a tag vX.Y.Z on main and publish a release for it; the notes come from
-# CHANGELOG.md by hand.
+# A published GitHub release (tag vX.Y.Z on main, notes from CHANGELOG.md) is what the server
+# installs (DEPLOY.md clones the tag). This checks that the versions match the tag, runs the
+# tests and attaches the demo page.
 name: Release
 
 on:
@@ -40,11 +40,9 @@ jobs:
       - name: Frontend tests and demo
         working-directory: frontend
         run: npm ci && npm test && npm run build:demo
-      - name: Deploy zip, the same layout DEPLOY.md expects
-        run: git archive --format=zip --prefix="fundraiser-app-$TAG/" -o "fundraiser-app-$TAG.zip" HEAD
-      - name: Attach to the release
+      - name: Attach the demo page to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp frontend/build-demo/bietrunde-demo.html "bietrunde-demo-$TAG.html"
-          gh release upload "$TAG" "fundraiser-app-$TAG.zip" "bietrunde-demo-$TAG.html" --clobber
+          gh release upload "$TAG" "bietrunde-demo-$TAG.html" --clobber

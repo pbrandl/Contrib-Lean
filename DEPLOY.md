@@ -2,7 +2,7 @@
 
 So läuft ein Update ab:
 
-1. Die neue Version wird in einem eigenen Ordner aufgebaut, getestet und gebaut. Die laufende App merkt davon nichts.
+1. Die neue Version kommt direkt von GitHub (die Release mit ihrem Tag, z. B. `v3.0.0`) in einen eigenen Ordner und wird dort getestet und gebaut. Die laufende App merkt davon nichts.
 2. Für ein paar Sekunden wird der Dienst angehalten: Die Daten wandern in den neuen Ordner, dann werden die beiden Ordner getauscht.
 3. Die alte Version bleibt vollständig liegen, samt Daten. Zurück geht es mit zwei Umbenennungen.
 
@@ -13,19 +13,41 @@ So läuft ein Update ab:
 
 Die Befehle unten sind für Version 3.0.0 (`v3.0.0`). Für eine spätere Version überall `v3.0.0` durch den neuen Namen ersetzen, zum Beispiel `v3.1.0`.
 
-## 0. Auf deinem Rechner: das Zip hochladen
+## 0. Vorbereiten
 
-Im Ordner, in dem das Zip liegt (meist `~/Downloads`):
+**Auf GitHub, für jede Version:** Im Repo `pbrandl/Contrib-Lean` unter Releases → „Draft a new release“ den Tag `v3.0.0` neu anlegen (Ziel `main`), als Text den Abschnitt aus `CHANGELOG.md`, dann „Publish release“. Diesen Tag holt der Server. Der Release-Workflow prüft dabei die Versionsnummern und hängt die Demo-Seite an.
 
-```bash
-scp fundraiser-app-v3.0.0.zip franz@antila.uberspace.de:~/
-```
-
-Dann einloggen:
+Einloggen:
 
 ```bash
 ssh franz@antila.uberspace.de
 ```
+
+**Einmalig: Zugang des Servers zu GitHub.** Der Server bekommt einen eigenen Schlüssel, der nur dieses Repo lesen darf (ein Deploy Key). Gibt es `~/.ssh/github_bietrunde` schon, ist das erledigt.
+
+```bash
+ssh-keygen -t ed25519 -N "" -C "uberspace-bietrunde" -f ~/.ssh/github_bietrunde
+```
+
+```bash
+printf 'Host github-bietrunde\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/github_bietrunde\n  IdentitiesOnly yes\n' >> ~/.ssh/config
+```
+
+```bash
+chmod 600 ~/.ssh/config
+```
+
+```bash
+cat ~/.ssh/github_bietrunde.pub
+```
+
+Die ausgegebene Zeile (sie beginnt mit `ssh-ed25519`) auf GitHub eintragen: im Repo Settings → Deploy keys → „Add deploy key“, Titel „Uberspace“, die Zeile einfügen, „Allow write access“ **nicht** ankreuzen, „Add key“. Dann prüfen:
+
+```bash
+ssh -T github-bietrunde
+```
+
+Beim ersten Mal fragt ssh, ob es dem Server vertrauen soll. Der Fingerabdruck muss einer von GitHub sein (für ED25519 `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`, alle unter https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints); dann `yes`. Danach muss `Hi pbrandl/Contrib-Lean! You've successfully authenticated, but GitHub does not provide shell access.` kommen.
 
 ## 1. Stand notieren
 
@@ -55,7 +77,7 @@ node -v
 
 Jetzt muss `v24.…` stehen. Die laufende App merkt davon nichts; sie startet erst beim Umschalten in Schritt 6 mit Node 24. Auch die alte Version (2.0.2) läuft mit Node 24, der Rückweg bleibt also offen. Gibt es Node 24 auf dem Uberspace nicht, zeigt `uberspace tools version list node` die verfügbaren Versionen; 22 geht auch.
 
-## 3. Neue Version auspacken
+## 3. Neue Version holen
 
 ```bash
 cd ~
@@ -68,14 +90,14 @@ ls -d ~/fundraiser-app-v3.0.0 ~/fundraiser-app-vor-v3.0.0
 Hier muss zweimal `No such file or directory` kommen. Gibt es `~/fundraiser-app-v3.0.0` schon (von einem abgebrochenen Versuch), ist es nur die unfertige neue Version: `rm -rf ~/fundraiser-app-v3.0.0` und den Befehl noch einmal. Gibt es `~/fundraiser-app-vor-v3.0.0`, bitte nicht weitermachen und melden.
 
 ```bash
-unzip -q ~/fundraiser-app-v3.0.0.zip -d ~
+git -c advice.detachedHead=false clone -q --depth 1 --branch v3.0.0 github-bietrunde:pbrandl/Contrib-Lean.git ~/fundraiser-app-v3.0.0
 ```
 
 ```bash
-ls ~/fundraiser-app-v3.0.0
+grep '"version"' ~/fundraiser-app-v3.0.0/backend/package.json
 ```
 
-Dort müssen unter anderem `backend`, `frontend` und `DEPLOY.md` stehen.
+Hier muss `"version": "3.0.0",` stehen. (Der Ordner ist ein Git-Checkout; `backend/data` gehört nicht dazu und kommt in Schritt 6 aus der alten Version.)
 
 ## 4. Pakete laden
 
@@ -233,8 +255,4 @@ Wenn die neue Version ein paar Tage gut läuft, am besten nach der Bietrunde:
 
 ```bash
 rm -rf ~/fundraiser-app-vor-v3.0.0
-```
-
-```bash
-rm ~/fundraiser-app-v3.0.0.zip
 ```

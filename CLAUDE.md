@@ -43,7 +43,7 @@ npm run preview                     # serves build/ on :3000, with the same /api
 
 To run the whole app locally, start `node server.js` in `backend/` and `npm start` in `frontend/` (the backend sends no CORS headers; the dev proxy makes that unnecessary). The dev server does not send the Content-Security-Policy of `public/.htaccess`.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request, on Node 22 and 24: backend tests and `npm audit`; frontend lint, tests, build (checked for inline scripts), demo build and `npm audit`. A published GitHub release runs `.github/workflows/release.yml`, which checks that the versions match the tag and attaches the deploy zip and the demo page. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests.
+CI (`.github/workflows/ci.yml`) runs on every push and pull request, on Node 22 and 24: backend tests and `npm audit`; frontend lint, tests, build (checked for inline scripts), demo build and `npm audit`. A published GitHub release runs `.github/workflows/release.yml`, which checks that the versions match the tag, runs the tests and attaches the demo page. Dependabot (`.github/dependabot.yml`) opens weekly update pull requests.
 
 Demo (no server, example data, neutral branding; `src/demo.js` replaces the API in the browser in `vite build --mode demo`):
 
@@ -53,7 +53,7 @@ npm run build:demo                  # frontend/build-demo/bietrunde-demo.html, o
 
 The owner publishes that page as a Claude artifact. It must not go on the live server: next to the real app it would lead visitors to the real member list.
 
-Deploy on the Uberspace: `DEPLOY.md`. A new version is unpacked into its own folder (`~/fundraiser-app-vX`), gets `node_modules` copied (or `npm ci` when a lockfile changed; in `frontend/` `npm ci --include=dev`, since Vite is a dev dependency), is tested and built there, and then the service is stopped, `backend/data` copied over and the folders swapped; the old folder stays as the way back. When you write commands for the owner:
+Deploy on the Uberspace: `DEPLOY.md`. A new version is the GitHub release tag `vX.Y.Z`, cloned into its own folder (`~/fundraiser-app-vX`) with the read-only deploy key `~/.ssh/github_bietrunde` (ssh host alias `github-bietrunde`); it gets `node_modules` copied (or `npm ci` when a lockfile changed; in `frontend/` `npm ci --include=dev`, since Vite is a dev dependency), is tested and built there, and then the service is stopped, `backend/data` copied over and the folders swapped; the old folder stays as the way back. When you write commands for the owner:
 
 - One command per line, never `&&` chains. Once a pasted line merged `~/html/` with the next `cd`, `rsync --delete build/ ~/html/cd ~/fundraiser-app/backend` took the backend folder as its target and emptied it, data included; it was restored from the copy made before the update.
 - `rsync --delete` only with full source and target paths (`rsync -a --delete ~/fundraiser-app/frontend/build/ ~/html/`).

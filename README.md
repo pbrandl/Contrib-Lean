@@ -80,7 +80,7 @@ cd frontend && npm run build              # production build (Vite), into fronte
 
 ## Releases
 
-A published GitHub release gets two files attached by the [release workflow](.github/workflows/release.yml): `fundraiser-app-vX.Y.Z.zip`, the deploy package `DEPLOY.md` expects, and `bietrunde-demo-vX.Y.Z.html`, the demo page. The steps are in `CONTRIBUTING.md`.
+A version is a GitHub release with the tag `vX.Y.Z`; the server installs that tag with `git clone` (`DEPLOY.md`). The [release workflow](.github/workflows/release.yml) checks that the versions match the tag, runs the tests and attaches the demo page `bietrunde-demo-vX.Y.Z.html`. The steps are in `CONTRIBUTING.md`.
 
 ## Operations (FRANZ!werk on the Uberspace)
 

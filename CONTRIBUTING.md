@@ -64,5 +64,6 @@ the architecture, the invariants and the UI spec are in [CLAUDE.md](CLAUDE.md). 
    names in `DEPLOY.md`.
 3. On GitHub: Releases, "Draft a new release", new tag `vX.Y.Z` on `main`, notes from the changelog,
    "Publish". The release workflow checks that the versions match the tag, runs the tests and
-   attaches `fundraiser-app-vX.Y.Z.zip` and the demo page.
-4. Install it on the server with [`DEPLOY.md`](DEPLOY.md).
+   attaches the demo page.
+4. Install it on the server with [`DEPLOY.md`](DEPLOY.md): the server clones the tag with a read-only
+   deploy key.

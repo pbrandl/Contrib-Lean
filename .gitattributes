@@ -3,6 +3,3 @@
 *.csv text eol=crlf
 *.png binary
 *.webp binary
-# Not needed on the server: left out of the deploy zip (git archive).
-.github export-ignore
-docs/screenshots export-ignore
